@@ -1490,16 +1490,18 @@ export function MapShapeEditor({
             return { ...s, points: clamped };
           })
         : overlays;
-    const res = await updateMapAction(mapId, {
-      reference_image_url: refUrl,
-      image_transform: transform,
-      view_box: viewBox,
-      path_atk: pathAtk,
-      path_def: pathDef,
-      // Ensure Flight/server-action serialization sends plain JSON for overlays.
-      extra_paths: JSON.parse(JSON.stringify(sanitizedOverlays)) as MapOverlayShape[],
-      editor_meta: JSON.parse(JSON.stringify(editorMeta)) as MapEditorMeta,
-    });
+    const res = await updateMapAction(
+      mapId,
+      JSON.stringify({
+        reference_image_url: refUrl,
+        image_transform: transform,
+        view_box: viewBox,
+        path_atk: pathAtk,
+        path_def: pathDef,
+        extra_paths: sanitizedOverlays,
+        editor_meta: editorMeta,
+      }),
+    );
     setSaving(false);
     if (res.error) setBanner(res.error);
     else setBanner("Map shape saved.");

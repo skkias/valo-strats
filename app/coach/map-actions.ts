@@ -57,12 +57,26 @@ export type MapUpdatePayload = {
   editor_meta?: MapEditorMeta;
 };
 
+/**
+ * Pass `payloadJson` = `JSON.stringify({ ...MapUpdatePayload })` from the client.
+ * Nested arrays (`extra_paths`, `editor_meta`) are unreliable as structured args
+ * through Server Actions; a single JSON string preserves the full payload.
+ */
 export async function updateMapAction(
   id: string,
-  payload: MapUpdatePayload,
+  payloadJson: string,
 ): Promise<{ error?: string }> {
   try {
     await assertCoachGate();
+    let payload: MapUpdatePayload;
+    try {
+      payload = JSON.parse(payloadJson) as MapUpdatePayload;
+    } catch {
+      return { error: "Invalid map save data." };
+    }
+    if (!payload || typeof payload !== "object") {
+      return { error: "Invalid map save data." };
+    }
     const supabase = createServiceSupabaseClient();
     const row: Record<string, unknown> = {};
     if (payload.name !== undefined) row.name = payload.name;
@@ -144,7 +158,10 @@ export async function uploadMapReferenceImageAction(
     const {
       data: { publicUrl },
     } = supabase.storage.from("strat-images").getPublicUrl(path);
-    const up = await updateMapAction(mapId, { reference_image_url: publicUrl });
+    const up = await updateMapAction(
+      mapId,
+      JSON.stringify({ reference_image_url: publicUrl }),
+    );
     if (up.error) return { error: up.error };
     return { url: publicUrl };
   } catch (e) {
