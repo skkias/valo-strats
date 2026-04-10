@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0b0618;
+  --foreground: #f5f3ff;
 }
 
 @theme inline {
@@ -12,15 +12,45 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+body {
+  min-height: 100vh;
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  background-image:
+    radial-gradient(
+      ellipse 130% 100% at 8% -25%,
+      rgba(192, 132, 252, 0.14),
+      transparent 52%
+    ),
+    radial-gradient(
+      ellipse 90% 80% at 100% 20%,
+      rgba(91, 33, 182, 0.22),
+      transparent 48%
+    ),
+    radial-gradient(
+      ellipse 70% 55% at 50% 110%,
+      rgba(30, 27, 75, 0.85),
+      transparent 58%
+    );
+  background-attachment: fixed;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer components {
+  .input-field {
+    @apply w-full rounded-lg border border-violet-800/50 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-violet-300/35;
+    @apply outline-none ring-violet-500/0 transition focus:border-violet-500/70 focus:ring-2 focus:ring-violet-500/25;
+  }
+
+  .label {
+    @apply text-xs font-medium uppercase tracking-wide text-violet-300/55;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-violet-600/20 transition hover:bg-violet-500 hover:shadow-violet-500/25 disabled:opacity-50;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-lg border border-violet-800/50 bg-slate-950/50 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-violet-600/40 hover:bg-violet-950/30 disabled:opacity-50;
+  }
 }
