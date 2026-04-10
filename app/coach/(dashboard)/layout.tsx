@@ -1,14 +1,9 @@
-import { CoachNav } from "@/components/coach/CoachNav";
-
 export default function CoachDashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-      <CoachNav />
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
-    </div>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
   );
 }

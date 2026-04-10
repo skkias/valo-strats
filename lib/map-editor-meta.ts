@@ -1,5 +1,6 @@
 import type {
   MapEditorMeta,
+  MapLabelTextAnchor,
   MapLocationLabel,
   MapLocationLabelStyle,
   MapSpawnMarker,
@@ -8,6 +9,7 @@ import type {
 const DEFAULT_LABEL_STYLE: MapLocationLabelStyle = "pin";
 const DEFAULT_LABEL_COLOR = "#e9d5ff";
 const DEFAULT_LABEL_SIZE = 1;
+const DEFAULT_LABEL_TEXT_ANCHOR: MapLabelTextAnchor = "right";
 
 function clampLabelSize(raw: unknown): number {
   const n = typeof raw === "number" ? raw : Number(raw);
@@ -22,6 +24,13 @@ function normalizeLabelColor(raw: unknown): string {
 
 function normalizeLabelStyle(raw: unknown): MapLocationLabelStyle {
   return raw === "text" ? "text" : "pin";
+}
+
+function normalizeLabelTextAnchor(raw: unknown): MapLabelTextAnchor {
+  if (raw === "top" || raw === "bottom" || raw === "left" || raw === "right") {
+    return raw;
+  }
+  return DEFAULT_LABEL_TEXT_ANCHOR;
 }
 
 function newId(): string {
@@ -80,6 +89,7 @@ export function normalizeEditorMeta(raw: unknown): MapEditorMeta {
           style: normalizeLabelStyle(m.style),
           color: normalizeLabelColor(m.color),
           size: clampLabelSize(m.size),
+          text_anchor: normalizeLabelTextAnchor(m.text_anchor),
         });
       }
     }

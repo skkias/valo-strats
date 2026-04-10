@@ -73,6 +73,9 @@ export interface MapSpawnMarker {
 /** `pin` = anchor dot + text; `text` = text only (position is text anchor). */
 export type MapLocationLabelStyle = "pin" | "text";
 
+/** Where label text sits relative to the anchor point (attack-side coords). */
+export type MapLabelTextAnchor = "top" | "bottom" | "left" | "right";
+
 export interface MapLocationLabel {
   id: string;
   x: number;
@@ -83,6 +86,8 @@ export interface MapLocationLabel {
   color: string;
   /** Size multiplier relative to the map’s default label scale (≈0.35–3). */
   size: number;
+  /** Placement of text relative to the point (default matches legacy: to the right). */
+  text_anchor: MapLabelTextAnchor;
 }
 
 export interface MapEditorMeta {

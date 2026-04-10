@@ -14,6 +14,7 @@ import type {
   GameMap,
   MapEditorMeta,
   MapImageTransform,
+  MapLabelTextAnchor,
   MapLocationLabelStyle,
   MapOverlayKind,
   MapOverlayShape,
@@ -27,6 +28,7 @@ import {
   ringsToPathD,
   type MapPoint,
 } from "@/lib/map-path";
+import { mapLabelTextSvgProps } from "@/lib/map-label-layout";
 import { normalizeEditorMeta } from "@/lib/map-editor-meta";
 import { normalizeExtraPaths } from "@/lib/map-extra-paths";
 import {
@@ -41,7 +43,11 @@ import {
 import { uploadMapReferenceImageAction } from "@/app/coach/map-actions";
 import {
   AlertCircle,
+  ArrowDown,
+  ArrowLeft,
   ArrowLeftRight,
+  ArrowRight,
+  ArrowUp,
   ArrowUpFromLine,
   BoxSelect,
   BrickWall,
@@ -66,6 +72,17 @@ import {
   Type,
   Undo2,
 } from "lucide-react";
+
+const LABEL_ANCHOR_OPTIONS: ReadonlyArray<{
+  value: MapLabelTextAnchor;
+  title: string;
+  Icon: typeof ArrowUp;
+}> = [
+  { value: "top", title: "Text above point", Icon: ArrowUp },
+  { value: "right", title: "Text to the right", Icon: ArrowRight },
+  { value: "bottom", title: "Text below point", Icon: ArrowDown },
+  { value: "left", title: "Text to the left", Icon: ArrowLeft },
+];
 
 type Tool = "draw" | "edit";
 
@@ -464,7 +481,8 @@ export function MapShapeEditor({
     style: MapLocationLabelStyle;
     color: string;
     size: number;
-  }>({ style: "pin", color: "#e9d5ff", size: 1 });
+    text_anchor: MapLabelTextAnchor;
+  }>({ style: "pin", color: "#e9d5ff", size: 1, text_anchor: "right" });
   const annotationDragRef = useRef<AnnotationDragState | null>(null);
 
   const clipId = useId().replace(/:/g, "");
@@ -591,52 +609,6 @@ export function MapShapeEditor({
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
   }, [mapId]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Delete" && e.key !== "Backspace") return;
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      )
-        return;
-      e.preventDefault();
-      if (!selection || selection.indices.length === 0) return;
-      const sorted = [...selection.indices].sort((a, b) => b - a);
-      if (selection.kind === "outline") {
-        const hi = selection.holeIndex;
-        if (hi === null) {
-          setOutlineOuter((pts) => {
-            const next = [...pts];
-            for (const i of sorted) next.splice(i, 1);
-            return next;
-          });
-        } else {
-          setOutlineHoles((holes) =>
-            holes.map((ring, j) => {
-              if (j !== hi) return ring;
-              const next = [...ring];
-              for (const i of sorted) next.splice(i, 1);
-              return next;
-            }),
-          );
-        }
-      } else {
-        const sid = selection.shapeId;
-        setOverlays((list) =>
-          list.map((s) => {
-            if (s.id !== sid) return s;
-            const next = [...s.points];
-            for (const i of sorted) next.splice(i, 1);
-            return { ...s, points: next };
-          }),
-        );
-      }
-      setSelection(null);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [selection]);
 
   useEffect(() => {
     outlineRingsRef.current = { outer: outlineOuter, holes: outlineHoles };
@@ -1055,6 +1027,7 @@ export function MapShapeEditor({
                 style: d.style,
                 color: d.color,
                 size: d.size,
+                text_anchor: d.text_anchor,
               },
             ],
           }));
@@ -1380,6 +1353,11 @@ export function MapShapeEditor({
     }
   }
 
+  const alignVerticalKeyRef = useRef(alignVertical);
+  const alignHorizontalKeyRef = useRef(alignHorizontal);
+  alignVerticalKeyRef.current = alignVertical;
+  alignHorizontalKeyRef.current = alignHorizontal;
+
   function addOverlay(kind: MapOverlayKind) {
     if (!outlineReady) {
       setBanner(
@@ -1560,6 +1538,61 @@ export function MapShapeEditor({
       (selection.kind === "overlay" &&
         activeLayer.kind === "overlay" &&
         selection.shapeId === activeLayer.id));
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
+        const k = e.key.toLowerCase();
+        if (k === "v" || k === "h") {
+          if (isEditableContextTarget(e.target)) return;
+          if (tool === "edit" && canAlign) {
+            e.preventDefault();
+            if (k === "v") alignVerticalKeyRef.current();
+            else alignHorizontalKeyRef.current();
+          }
+          return;
+        }
+      }
+
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      if (isEditableContextTarget(e.target)) return;
+      e.preventDefault();
+      if (!selection || selection.indices.length === 0) return;
+      const sorted = [...selection.indices].sort((a, b) => b - a);
+      if (selection.kind === "outline") {
+        const hi = selection.holeIndex;
+        if (hi === null) {
+          setOutlineOuter((pts) => {
+            const next = [...pts];
+            for (const i of sorted) next.splice(i, 1);
+            return next;
+          });
+        } else {
+          setOutlineHoles((holes) =>
+            holes.map((ring, j) => {
+              if (j !== hi) return ring;
+              const next = [...ring];
+              for (const i of sorted) next.splice(i, 1);
+              return next;
+            }),
+          );
+        }
+      } else {
+        const sid = selection.shapeId;
+        setOverlays((list) =>
+          list.map((s) => {
+            if (s.id !== sid) return s;
+            const next = [...s.points];
+            for (const i of sorted) next.splice(i, 1);
+            return { ...s, points: next };
+          }),
+        );
+      }
+      setSelection(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selection, tool, canAlign]);
 
   const activeCount = getActivePoints().length;
 
@@ -2086,14 +2119,27 @@ export function MapShapeEditor({
                   const pinR = annMarkerR * l.size * 0.55;
                   const strokeOut = fs * 0.08;
                   const fill = l.color;
+                  const textOnlyGap = Math.max(
+                    fs * 0.35,
+                    annMarkerR * l.size * 0.45,
+                  );
+                  const tp = mapLabelTextSvgProps(l.text_anchor, {
+                    px: l.x,
+                    py: l.y,
+                    pinR,
+                    fs,
+                    isPin: l.style === "pin",
+                    textOnlyGap,
+                  });
                   if (l.style === "text") {
                     return (
                       <text
                         key={`label-${l.id}`}
                         data-map-ann="label"
-                        x={l.x}
-                        y={l.y}
-                        dominantBaseline="middle"
+                        x={tp.x}
+                        y={tp.y}
+                        textAnchor={tp.textAnchor}
+                        dominantBaseline={tp.dominantBaseline}
                         fill={fill}
                         stroke="rgba(12,12,18,0.88)"
                         strokeWidth={strokeOut}
@@ -2141,9 +2187,10 @@ export function MapShapeEditor({
                         }}
                       />
                       <text
-                        x={l.x + pinR * 1.25}
-                        y={l.y}
-                        dominantBaseline="middle"
+                        x={tp.x}
+                        y={tp.y}
+                        textAnchor={tp.textAnchor}
+                        dominantBaseline={tp.dominantBaseline}
                         fill={fill}
                         stroke="rgba(12,12,18,0.88)"
                         strokeWidth={strokeOut}
@@ -2296,6 +2343,32 @@ export function MapShapeEditor({
                     >
                       Text only
                     </button>
+                  </div>
+                  <div>
+                    <p className="text-xs text-violet-300/60">Text from point</p>
+                    <div className="mt-1 grid grid-cols-4 gap-1">
+                      {LABEL_ANCHOR_OPTIONS.map(({ value, title, Icon }) => (
+                        <button
+                          key={value}
+                          type="button"
+                          title={title}
+                          onClick={() =>
+                            setLabelPlaceDefaults((d) => ({
+                              ...d,
+                              text_anchor: value,
+                            }))
+                          }
+                          className={`inline-flex items-center justify-center rounded border p-1.5 ${
+                            labelPlaceDefaults.text_anchor === value
+                              ? "border-fuchsia-500/55 bg-fuchsia-950/40 text-white"
+                              : "border-violet-800/45 text-violet-200/75 hover:bg-violet-950/35"
+                          }`}
+                        >
+                          <Icon className="h-3.5 w-3.5" aria-hidden />
+                          <span className="sr-only">{title}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   <div>
                     <label className="text-xs text-violet-300/60">
@@ -2563,6 +2636,38 @@ export function MapShapeEditor({
                       >
                         Text
                       </button>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-violet-300/60">
+                        Text from point
+                      </p>
+                      <div className="mt-1 grid grid-cols-4 gap-1">
+                        {LABEL_ANCHOR_OPTIONS.map(({ value, title, Icon }) => (
+                          <button
+                            key={`${l.id}-${value}`}
+                            type="button"
+                            title={title}
+                            onClick={() =>
+                              setEditorMeta((m) => ({
+                                ...m,
+                                location_labels: m.location_labels.map((x) =>
+                                  x.id === l.id
+                                    ? { ...x, text_anchor: value }
+                                    : x,
+                                ),
+                              }))
+                            }
+                            className={`inline-flex items-center justify-center rounded border p-1 ${
+                              l.text_anchor === value
+                                ? "border-fuchsia-500/55 bg-fuchsia-950/40 text-white"
+                                : "border-violet-800/45 text-violet-200/75 hover:bg-violet-950/35"
+                            }`}
+                          >
+                            <Icon className="h-3 w-3" aria-hidden />
+                            <span className="sr-only">{title}</span>
+                          </button>
+                        ))}
+                      </div>
                     </div>
                     <div>
                       <label className="text-[11px] text-violet-300/60">
@@ -2914,9 +3019,24 @@ export function MapShapeEditor({
               <p className="text-xs text-violet-300/55">
                 Click near an edge to add a vertex on that segment (including
                 grade polylines). Right-click a vertex to remove it. Shift+click
-                vertices to multi-select. Two or more: align axes. For grade
-                layers, use Flip higher side in the sidebar. Delete / Backspace
-                removes selected vertices.
+                vertices to multi-select. Two or more: align axes (buttons or{" "}
+                <kbd className="rounded border border-violet-700/50 bg-violet-950/60 px-1">
+                  Ctrl
+                </kbd>
+                +
+                <kbd className="rounded border border-violet-700/50 bg-violet-950/60 px-1">
+                  Shift
+                </kbd>
+                +
+                <kbd className="rounded border border-violet-700/50 bg-violet-950/60 px-1">
+                  V
+                </kbd>
+                /
+                <kbd className="rounded border border-violet-700/50 bg-violet-950/60 px-1">
+                  H
+                </kbd>
+                ). For grade layers, use Flip higher side in the sidebar. Delete /
+                Backspace removes selected vertices.
               </p>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -2924,7 +3044,7 @@ export function MapShapeEditor({
                   disabled={!canAlign}
                   onClick={alignVertical}
                   className="btn-secondary text-xs disabled:opacity-40"
-                  title="Same x (vertical line through points)"
+                  title="Same x (vertical line through points). Shortcut: Ctrl+Shift+V"
                 >
                   Vertical sync
                 </button>
@@ -2933,7 +3053,7 @@ export function MapShapeEditor({
                   disabled={!canAlign}
                   onClick={alignHorizontal}
                   className="btn-secondary text-xs disabled:opacity-40"
-                  title="Same y (horizontal line through points)"
+                  title="Same y (horizontal line through points). Shortcut: Ctrl+Shift+H"
                 >
                   Horizontal sync
                 </button>
