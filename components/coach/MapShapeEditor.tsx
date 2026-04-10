@@ -46,6 +46,9 @@ import {
   BrickWall,
   ChevronRight,
   CircleSlash2,
+  Eye,
+  EyeOff,
+  FlipVertical2,
   ImagePlus,
   Loader2,
   Mountain,
@@ -412,6 +415,8 @@ export function MapShapeEditor({
   const [sidebarHoverOverlayId, setSidebarHoverOverlayId] = useState<
     string | null
   >(null);
+  /** Cyan defense outline is mirrored from attack; can hide for a cleaner view. */
+  const [showDefensePreview, setShowDefensePreview] = useState(true);
 
   const clipId = useId().replace(/:/g, "");
   const outlineRingsRef = useRef({ outer: outlineOuter, holes: outlineHoles });
@@ -1202,6 +1207,28 @@ export function MapShapeEditor({
     setSelection(null);
   }
 
+  function swapAttackDefenseSides() {
+    setBanner(null);
+    const rect = vbRef.current;
+    const { outer, holes } = outlineRingsRef.current;
+    const nextOuter = flipPointsOverHorizontalMidline(rect, outer);
+    const nextHoles = holes.map((h) =>
+      flipPointsOverHorizontalMidline(rect, h),
+    );
+    setOutlineOuter(nextOuter);
+    setOutlineHoles(nextHoles);
+    setOverlays((list) =>
+      list.map((s) => ({
+        ...s,
+        points: clampPointsToOutline(
+          flipPointsOverHorizontalMidline(rect, s.points),
+          nextOuter,
+          nextHoles,
+        ),
+      })),
+    );
+  }
+
   function addOutlineHole() {
     if (!outlineReady) {
       setBanner("Close the outer outline (≥3 points) before adding a hole.");
@@ -1344,7 +1371,7 @@ export function MapShapeEditor({
           </div>
 
           <div className="flex shrink-0 flex-wrap items-center gap-3 text-xs text-violet-300/55">
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1 rounded border border-violet-800/40 px-2 py-0.5">
                 <Swords className="h-3.5 w-3.5 text-violet-300" />
                 Attack (editable)
@@ -1353,6 +1380,33 @@ export function MapShapeEditor({
                 <Shield className="h-3.5 w-3.5 text-sky-300" />
                 Defense (auto mirror)
               </span>
+              <button
+                type="button"
+                onClick={() => setShowDefensePreview((v) => !v)}
+                className="btn-secondary inline-flex items-center gap-1 px-2 py-1"
+                title={
+                  showDefensePreview
+                    ? "Hide cyan defense preview"
+                    : "Show cyan defense preview"
+                }
+              >
+                {showDefensePreview ? (
+                  <Eye className="h-3.5 w-3.5" />
+                ) : (
+                  <EyeOff className="h-3.5 w-3.5" />
+                )}
+                Defense preview
+              </button>
+              <button
+                type="button"
+                onClick={swapAttackDefenseSides}
+                disabled={outlineOuter.length < 1}
+                className="btn-secondary inline-flex items-center gap-1 px-2 py-1 disabled:opacity-40"
+                title="Flip stored attack outline and overlays to the opposite half of the map (use if attack/defense look inverted)"
+              >
+                <FlipVertical2 className="h-3.5 w-3.5" />
+                Swap sides
+              </button>
             </div>
             <span className="text-violet-300/40">
               Scroll to zoom. Right-drag to pan when zoomed. Drag the map panel
@@ -1424,7 +1478,7 @@ export function MapShapeEditor({
                 </text>
               )}
 
-              {outlineDefD && (
+              {showDefensePreview && outlineDefD && (
                 <path
                   d={outlineDefD}
                   fill="rgba(56,189,248,0.1)"
