@@ -4,10 +4,12 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+import type { CSSProperties } from "react";
 import type {
   GameMap,
   MapImageTransform,
@@ -30,11 +32,19 @@ import {
   pointInOutlineWithHoles,
 } from "@/lib/polygon-contains";
 import {
+  closestEdgeWithinDistance,
+  insertPointOnEdge,
+} from "@/lib/point-segment";
+import {
   updateMapAction,
   uploadMapReferenceImageAction,
 } from "@/app/coach/map-actions";
 import {
+  ArrowLeftRight,
+  ArrowUpFromLine,
   BoxSelect,
+  BrickWall,
+  ChevronRight,
   CircleSlash2,
   ImagePlus,
   Loader2,
@@ -72,6 +82,29 @@ type DragState = {
 /** Visible window into canvas space (does not change saved coordinates). */
 type ViewRect = { minX: number; minY: number; width: number; height: number };
 
+type PanDragState = {
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startView: ViewRect;
+  /** Canvas user-units per CSS pixel, captured once at pointer down (avoids viewBox / CTM drift while panning). */
+  userPerPxX: number;
+  userPerPxY: number;
+};
+
+/** Map canvas panel: grow with layout but cap on huge viewports (e.g. 4K @ 150%). */
+const MAP_VIEWPORT_MIN_W_PX = 280;
+const MAP_VIEWPORT_MIN_H_PX = 200;
+const MAP_VIEWPORT_MAX_W_PX = 2400;
+const MAP_VIEWPORT_MAX_H_PX = 1680;
+const MAP_VIEWPORT_MAX_DVH = 90;
+
+/** Target on-screen size (px) for vertex handles; scales in user units when viewBox zooms. */
+const VERTEX_HANDLE_SCREEN_PX = 8;
+const VERTEX_STROKE_SCREEN_PX = 1.35;
+const PASSIVE_VERTEX_SCREEN_PX = 4.5;
+const PASSIVE_STROKE_SCREEN_PX = 1;
+
 function previewOpenOrClosed(points: MapPoint[]): string | null {
   if (points.length === 0) return null;
   if (points.length === 1) {
@@ -83,6 +116,195 @@ function previewOpenOrClosed(points: MapPoint[]): string | null {
   for (const p of rest) parts.push(`L ${p.x} ${p.y}`);
   if (points.length >= 3) parts.push("Z");
   return parts.join(" ");
+}
+
+/** Sidebar layer list order (grouping). */
+const OVERLAY_KIND_ORDER: MapOverlayKind[] = [
+  "obstacle",
+  "elevation",
+  "wall",
+  "grade",
+];
+
+function overlayPolygonStyle(kind: MapOverlayKind): {
+  fill: string;
+  stroke: string;
+} | null {
+  switch (kind) {
+    case "obstacle":
+      return { fill: "rgba(251,191,36,0.14)", stroke: "rgb(251,191,36)" };
+    case "elevation":
+      return { fill: "rgba(52,211,153,0.14)", stroke: "rgb(52,211,153)" };
+    case "wall":
+      return { fill: "rgba(148,163,184,0.18)", stroke: "rgb(148,163,184)" };
+    case "grade":
+      return null;
+    default:
+      return null;
+  }
+}
+
+function overlayPolygonStyleHover(
+  kind: MapOverlayKind,
+  highlight: boolean,
+): { fill: string; stroke: string } | null {
+  const base = overlayPolygonStyle(kind);
+  if (!base) return null;
+  if (!highlight) return base;
+  switch (kind) {
+    case "obstacle":
+      return { fill: "rgba(251,191,36,0.42)", stroke: "rgb(254,249,195)" };
+    case "elevation":
+      return { fill: "rgba(45,212,191,0.4)", stroke: "rgb(204,251,241)" };
+    case "wall":
+      return { fill: "rgba(186,198,216,0.48)", stroke: "rgb(241,245,249)" };
+    default:
+      return base;
+  }
+}
+
+function overlayPassiveFill(kind: MapOverlayKind): string {
+  switch (kind) {
+    case "obstacle":
+      return "rgba(251,191,36,0.45)";
+    case "elevation":
+      return "rgba(52,211,153,0.45)";
+    case "wall":
+      return "rgba(148,163,184,0.5)";
+    case "grade":
+      return "rgba(34,211,238,0.5)";
+    default:
+      return "rgba(253,224,71,0.45)";
+  }
+}
+
+function overlayPassiveFillHover(
+  kind: MapOverlayKind,
+  sidebarHover: boolean,
+): string {
+  if (!sidebarHover) return overlayPassiveFill(kind);
+  switch (kind) {
+    case "obstacle":
+      return "rgba(254,243,199,0.95)";
+    case "elevation":
+      return "rgba(167,243,208,0.95)";
+    case "wall":
+      return "rgba(241,245,249,0.95)";
+    case "grade":
+      return "rgba(165,243,252,0.98)";
+    default:
+      return overlayPassiveFill(kind);
+  }
+}
+
+function overlayActiveVertexFill(
+  kind: MapOverlayKind,
+  selected: boolean,
+): string {
+  if (selected) return "rgb(250,250,250)";
+  switch (kind) {
+    case "obstacle":
+      return "rgb(253,224,71)";
+    case "elevation":
+      return "rgb(167,243,208)";
+    case "wall":
+      return "rgb(203,213,225)";
+    case "grade":
+      return "rgb(103,232,249)";
+    default:
+      return "rgb(253,224,71)";
+  }
+}
+
+/** Grade polyline: spikes on each segment; +1 = higher ground to the left of p[i]→p[i+1]. */
+function GradeOverlaySvg({
+  sh,
+  vbWidth,
+  highlight,
+}: {
+  sh: MapOverlayShape;
+  vbWidth: number;
+  /** Sidebar row hover → brighter stroke/fill on canvas */
+  highlight?: boolean;
+}) {
+  const pts = sh.points;
+  const sw = vbWidth * 0.0035 * (highlight ? 1.35 : 1);
+  const side = sh.gradeHighSide ?? 1;
+  const lineStroke = highlight ? "rgb(207,250,254)" : "rgb(34,211,238)";
+  const spikeFill = highlight ? "rgba(207,250,254,0.98)" : "rgba(34,211,238,0.92)";
+  const dotFill = highlight ? "rgba(207,250,254,0.55)" : "rgba(34,211,238,0.35)";
+  const dotStroke = highlight ? "rgb(236,254,255)" : "rgb(34,211,238)";
+  const spikeDepth = vbWidth * (highlight ? 0.012 : 0.01);
+  const spikeHalfW = vbWidth * 0.0032;
+  const spacing = vbWidth * 0.036;
+
+  if (pts.length === 0) return null;
+  if (pts.length === 1) {
+    const p = pts[0]!;
+    const r = vbWidth * (highlight ? 0.01 : 0.008);
+    return (
+      <g pointerEvents="none">
+        <circle
+          cx={p.x}
+          cy={p.y}
+          r={r}
+          fill={dotFill}
+          stroke={dotStroke}
+          strokeWidth={sw * (highlight ? 1.4 : 1)}
+        />
+      </g>
+    );
+  }
+
+  return (
+    <g pointerEvents="none">
+      {Array.from({ length: pts.length - 1 }, (_, seg) => {
+        const p0 = pts[seg]!;
+        const p1 = pts[seg + 1]!;
+        const dx = p1.x - p0.x;
+        const dy = p1.y - p0.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const tx = dx / len;
+        const ty = dy / len;
+        const nx = -dy / len;
+        const ny = dx / len;
+        const hx = nx * side;
+        const hy = ny * side;
+        const spikeCount = Math.max(2, Math.min(18, Math.floor(len / spacing)));
+        return (
+          <g key={seg}>
+            <line
+              x1={p0.x}
+              y1={p0.y}
+              x2={p1.x}
+              y2={p1.y}
+              stroke={lineStroke}
+              strokeWidth={sw * (highlight ? 1.65 : 1.2)}
+              strokeLinecap="round"
+            />
+            {Array.from({ length: spikeCount }, (__, i) => {
+              const t = (i + 1) / (spikeCount + 1);
+              const cx = p0.x + t * dx;
+              const cy = p0.y + t * dy;
+              const ax = cx + hx * spikeDepth;
+              const ay = cy + hy * spikeDepth;
+              const b1x = cx - tx * spikeHalfW;
+              const b1y = cy - ty * spikeHalfW;
+              const b2x = cx + tx * spikeHalfW;
+              const b2y = cy + ty * spikeHalfW;
+              return (
+                <polygon
+                  key={i}
+                  points={`${ax},${ay} ${b1x},${b1y} ${b2x},${b2y}`}
+                  fill={spikeFill}
+                />
+              );
+            })}
+          </g>
+        );
+      })}
+    </g>
+  );
 }
 
 function newShapeId(): string {
@@ -106,6 +328,43 @@ function clientToSvg(
   return { x: p.x, y: p.y };
 }
 
+function isEditableContextTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  return Boolean(
+    target.closest(
+      "input, textarea, select, [contenteditable='true'], [contenteditable='plaintext-only']",
+    ),
+  );
+}
+
+function adjustSelectionAfterVertexRemove(
+  selection: Selection,
+  layer: ActiveLayer,
+  removedIndex: number,
+): Selection {
+  if (!selection) return null;
+  if (selection.kind === "outline" && layer.kind === "outline") {
+    if (selection.holeIndex !== layer.holeIndex) return selection;
+    const next = selection.indices
+      .filter((i) => i !== removedIndex)
+      .map((i) => (i > removedIndex ? i - 1 : i));
+    if (next.length === 0) return null;
+    return { ...selection, indices: next };
+  }
+  if (
+    selection.kind === "overlay" &&
+    layer.kind === "overlay" &&
+    selection.shapeId === layer.id
+  ) {
+    const next = selection.indices
+      .filter((i) => i !== removedIndex)
+      .map((i) => (i > removedIndex ? i - 1 : i));
+    if (next.length === 0) return null;
+    return { ...selection, indices: next };
+  }
+  return selection;
+}
+
 export function MapShapeEditor({
   mapId,
   initial,
@@ -118,6 +377,7 @@ export function MapShapeEditor({
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
+  const panDragRef = useRef<PanDragState | null>(null);
 
   const [refUrl, setRefUrl] = useState<string | null>(
     initial.reference_image_url,
@@ -146,6 +406,12 @@ export function MapShapeEditor({
   const [banner, setBanner] = useState<string | null>(null);
   /** null = show full canvas; otherwise zoom/pan window (editor-only, not saved). */
   const [viewport, setViewport] = useState<ViewRect | null>(null);
+  const [rightPanning, setRightPanning] = useState(false);
+  const [svgClientPx, setSvgClientPx] = useState({ w: 0, h: 0 });
+  /** Sidebar list row hover → highlight matching overlay on the canvas */
+  const [sidebarHoverOverlayId, setSidebarHoverOverlayId] = useState<
+    string | null
+  >(null);
 
   const clipId = useId().replace(/:/g, "");
   const outlineRingsRef = useRef({ outer: outlineOuter, holes: outlineHoles });
@@ -156,6 +422,29 @@ export function MapShapeEditor({
 
   const displayVb = viewport ?? vb;
   const outlineReady = outlineOuter.length >= 3;
+
+  useLayoutEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const apply = () =>
+      setSvgClientPx({ w: el.clientWidth, h: el.clientHeight });
+    apply();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  /** SVG user-units per screen pixel (current zoom + panel size). */
+  const svgUserPerPx = useMemo(() => {
+    const measured = svgClientPx.w > 0 ? svgClientPx.w : 480;
+    const wPx = Math.max(1, measured);
+    return displayVb.width / wPx;
+  }, [displayVb.width, svgClientPx.w]);
+
+  const hitRadius = VERTEX_HANDLE_SCREEN_PX * svgUserPerPx;
+  const passiveVertexRadius = PASSIVE_VERTEX_SCREEN_PX * svgUserPerPx;
+  const vertexStrokeW = VERTEX_STROKE_SCREEN_PX * svgUserPerPx;
+  const passiveVertexStrokeW = PASSIVE_STROKE_SCREEN_PX * svgUserPerPx;
 
   const defOuter = useMemo(
     () =>
@@ -301,6 +590,16 @@ export function MapShapeEditor({
   }, [viewBox]);
 
   useEffect(() => {
+    const onDocumentContextMenu = (e: MouseEvent) => {
+      if (isEditableContextTarget(e.target)) return;
+      e.preventDefault();
+    };
+    document.addEventListener("contextmenu", onDocumentContextMenu, true);
+    return () =>
+      document.removeEventListener("contextmenu", onDocumentContextMenu, true);
+  }, []);
+
+  useEffect(() => {
     const el = svgRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
@@ -367,8 +666,6 @@ export function MapShapeEditor({
     return { x, y, w: drawW, h: drawH };
   }, [imgDims, transform, vb]);
 
-  const hitRadius = vb.width * 0.012;
-
   const getActivePoints = useCallback((): MapPoint[] => {
     if (activeLayer.kind === "outline") {
       if (activeLayer.holeIndex === null) return outlineOuter;
@@ -404,13 +701,13 @@ export function MapShapeEditor({
       if (activeLayer.kind !== "outline") {
         if (!outlineReady) {
           setBanner(
-            "Draw the map outline first (at least three points) before placing obstacles or elevation.",
+            "Draw the map outline first (at least three points) before placing overlays.",
           );
           return;
         }
         if (!pointInOutlineWithHoles(p, outlineOuter, outlineHoles)) {
           setBanner(
-            "Obstacles and elevation must sit inside the purple map outline (not in cutouts).",
+            "Overlays must sit inside the purple map outline (not in cutouts).",
           );
           return;
         }
@@ -418,15 +715,139 @@ export function MapShapeEditor({
       setBanner(null);
       setActivePoints((prev) => [...prev, p]);
     },
-    [activeLayer.kind, outlineReady, outlineOuter, outlineHoles, setActivePoints],
+    [
+      activeLayer,
+      outlineReady,
+      outlineOuter,
+      outlineHoles,
+      setActivePoints,
+      overlays,
+    ],
+  );
+
+  const removeVertexAt = useCallback((layer: ActiveLayer, index: number) => {
+    setBanner(null);
+    setSelection((sel) => adjustSelectionAfterVertexRemove(sel, layer, index));
+    if (layer.kind === "outline") {
+      if (layer.holeIndex === null) {
+        setOutlineOuter((pts) => pts.filter((_, i) => i !== index));
+      } else {
+        const hi = layer.holeIndex;
+        setOutlineHoles((holes) =>
+          holes.map((ring, j) =>
+            j === hi ? ring.filter((_, i) => i !== index) : ring,
+          ),
+        );
+      }
+      return;
+    }
+    const id = layer.id;
+    setOverlays((list) =>
+      list.map((s) =>
+        s.id === id
+          ? { ...s, points: s.points.filter((_, i) => i !== index) }
+          : s,
+      ),
+    );
+  }, []);
+
+  const tryInsertPointOnEdge = useCallback(
+    (clientX: number, clientY: number): boolean => {
+      if (tool !== "edit") return false;
+      const svg = svgRef.current;
+      if (!svg) return false;
+      const p = clientToSvg(svg, clientX, clientY);
+      const maxDist = 14 * svgUserPerPx;
+
+      let points: MapPoint[];
+      let closed: boolean;
+      const al = activeLayer;
+
+      if (al.kind === "outline") {
+        if (al.holeIndex === null) {
+          points = outlineOuter;
+          closed = outlineOuter.length >= 3;
+        } else {
+          points = outlineHoles[al.holeIndex] ?? [];
+          closed = points.length >= 3;
+        }
+      } else {
+        const sh = overlays.find((o) => o.id === al.id);
+        if (!sh) return false;
+        points = sh.points;
+        closed = sh.kind === "grade" ? false : points.length >= 3;
+      }
+
+      if (points.length < 2) return false;
+
+      const hit = closestEdgeWithinDistance(points, p, closed, maxDist);
+      if (!hit) return false;
+
+      const next = insertPointOnEdge(
+        points,
+        hit.edgeIndex,
+        hit.closest,
+        closed,
+      );
+
+      if (al.kind === "outline") {
+        if (al.holeIndex === null) {
+          setOutlineOuter(next);
+        } else {
+          const hi = al.holeIndex;
+          setOutlineHoles((holes) =>
+            holes.map((ring, j) => (j === hi ? next : ring)),
+          );
+        }
+      } else {
+        const id = al.id;
+        setOverlays((list) =>
+          list.map((s) => (s.id === id ? { ...s, points: next } : s)),
+        );
+      }
+      setSelection(null);
+      setBanner(null);
+      return true;
+    },
+    [tool, activeLayer, outlineOuter, outlineHoles, overlays, svgUserPerPx],
   );
 
   const onSvgPointerDown = useCallback(
     (e: React.PointerEvent<SVGSVGElement>) => {
+      if (e.button === 2) {
+        e.preventDefault();
+        if (!viewport) return;
+        const t = e.target as Element;
+        if (t.tagName === "circle") return;
+        const svg = svgRef.current;
+        if (!svg) return;
+        const canvas = vbRef.current;
+        const cur: ViewRect = {
+          minX: viewport.minX,
+          minY: viewport.minY,
+          width: viewport.width,
+          height: viewport.height,
+        };
+        const br = svg.getBoundingClientRect();
+        const bw = Math.max(1, br.width);
+        const bh = Math.max(1, br.height);
+        panDragRef.current = {
+          pointerId: e.pointerId,
+          startClientX: e.clientX,
+          startClientY: e.clientY,
+          startView: cur,
+          userPerPxX: cur.width / bw,
+          userPerPxY: cur.height / bh,
+        };
+        setRightPanning(true);
+        (e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId);
+        return;
+      }
       if (e.button !== 0) return;
       const t = e.target as Element;
       if (t.tagName === "circle") return;
       if (tool === "edit") {
+        if (tryInsertPointOnEdge(e.clientX, e.clientY)) return;
         setSelection(null);
         return;
       }
@@ -436,7 +857,52 @@ export function MapShapeEditor({
       const p = clientToSvg(svg, e.clientX, e.clientY);
       addPoint(p);
     },
-    [tool, addPoint],
+    [tool, addPoint, viewport, tryInsertPointOnEdge],
+  );
+
+  const onSvgPointerMove = useCallback(
+    (e: React.PointerEvent<SVGSVGElement>) => {
+      const pan = panDragRef.current;
+      if (!pan || e.pointerId !== pan.pointerId) return;
+      e.preventDefault();
+      const dxPx = e.clientX - pan.startClientX;
+      const dyPx = e.clientY - pan.startClientY;
+      const dxUser = dxPx * pan.userPerPxX;
+      const dyUser = dyPx * pan.userPerPxY;
+      const canvas = vbRef.current;
+      let nx = pan.startView.minX - dxUser;
+      let ny = pan.startView.minY - dyUser;
+      nx = Math.max(
+        canvas.minX,
+        Math.min(canvas.minX + canvas.width - pan.startView.width, nx),
+      );
+      ny = Math.max(
+        canvas.minY,
+        Math.min(canvas.minY + canvas.height - pan.startView.height, ny),
+      );
+      setViewport({
+        minX: nx,
+        minY: ny,
+        width: pan.startView.width,
+        height: pan.startView.height,
+      });
+    },
+    [],
+  );
+
+  const endRightPan = useCallback(
+    (e: React.PointerEvent<SVGSVGElement>) => {
+      const pan = panDragRef.current;
+      if (!pan || e.pointerId !== pan.pointerId) return;
+      panDragRef.current = null;
+      setRightPanning(false);
+      try {
+        (e.currentTarget as SVGSVGElement).releasePointerCapture(e.pointerId);
+      } catch {
+        /* already released */
+      }
+    },
+    [],
   );
 
   const endDrag = useCallback(() => {
@@ -449,6 +915,13 @@ export function MapShapeEditor({
       layer: ActiveLayer,
       pointIndex: number,
     ) => {
+      if (e.button === 2) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (tool !== "edit") return;
+        removeVertexAt(layer, pointIndex);
+        return;
+      }
       if (e.button !== 0) return;
       e.stopPropagation();
       if (tool !== "edit") return;
@@ -500,7 +973,7 @@ export function MapShapeEditor({
       }
       (e.currentTarget as SVGElement).setPointerCapture(e.pointerId);
     },
-    [tool, selection, outlineOuter, outlineHoles, overlays],
+    [tool, selection, outlineOuter, outlineHoles, overlays, removeVertexAt],
   );
 
   const onVertexPointerMove = useCallback(
@@ -576,6 +1049,7 @@ export function MapShapeEditor({
     i: number,
   ) {
     e.stopPropagation();
+    if (e.button !== 0) return;
     if (tool !== "edit") return;
     const svg = svgRef.current;
     if (!svg) return;
@@ -692,15 +1166,32 @@ export function MapShapeEditor({
   function addOverlay(kind: MapOverlayKind) {
     if (!outlineReady) {
       setBanner(
-        "Finish the map outline (three or more points) before adding obstacles or elevation.",
+        "Finish the map outline (three or more points) before adding overlays.",
       );
       return;
     }
     const id = newShapeId();
-    setOverlays((list) => [...list, { id, kind, points: [] }]);
+    setOverlays((list) => [
+      ...list,
+      kind === "grade"
+        ? { id, kind, points: [], gradeHighSide: 1 as const }
+        : { id, kind, points: [] },
+    ]);
     setActiveLayer({ kind: "overlay", id });
     setTool("draw");
     setSelection(null);
+  }
+
+  function flipGradeHighSide() {
+    if (activeLayer.kind !== "overlay") return;
+    const id = activeLayer.id;
+    setOverlays((list) =>
+      list.map((s) =>
+        s.id === id && s.kind === "grade"
+          ? { ...s, gradeHighSide: (s.gradeHighSide ?? 1) === 1 ? -1 : 1 }
+          : s,
+      ),
+    );
   }
 
   function removeOverlay(id: string) {
@@ -750,10 +1241,14 @@ export function MapShapeEditor({
     );
     const sanitizedOverlays =
       outlineReady
-        ? overlays.map((s) => ({
-            ...s,
-            points: clampPointsToOutline(s.points, outlineOuter, outlineHoles),
-          }))
+        ? overlays.map((s) => {
+            const clamped = clampPointsToOutline(
+              s.points,
+              outlineOuter,
+              outlineHoles,
+            );
+            return { ...s, points: clamped };
+          })
         : overlays;
     const res = await updateMapAction(mapId, {
       reference_image_url: refUrl,
@@ -793,16 +1288,17 @@ export function MapShapeEditor({
   const activeCount = getActivePoints().length;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden">
+      <div className="flex shrink-0 flex-wrap items-start justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-white">{initial.name}</h2>
           <p className="mt-1 text-sm text-violet-200/60">
             The cyan defense shape mirrors the purple attack outline. Add holes
-            to cut out areas inside the outline. Obstacles and elevation sit in
-            the playable ring (not in holes); they stay clipped as you edit. Use
-            Edit to drag vertices, Shift+click to multi-select, and click passive
-            overlay vertices on the canvas to select their layer.
+            to cut out areas inside the outline. Overlays (obstacles, elevation,
+            walls, grade lines) sit in the playable ring (not in holes); they stay
+            clipped as you edit. Use Edit to drag vertices, Shift+click to
+            multi-select, and click passive overlay vertices on the canvas to
+            select their layer.
           </p>
         </div>
         <button
@@ -822,16 +1318,16 @@ export function MapShapeEditor({
 
       {banner && (
         <p
-          className="rounded-lg border border-violet-800/40 bg-slate-950/60 px-4 py-3 text-sm text-slate-200"
+          className="shrink-0 rounded-lg border border-violet-800/40 bg-slate-950/60 px-4 py-3 text-sm text-slate-200"
           role="status"
         >
           {banner}
         </p>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
+      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,min(50dvh,32rem))] gap-6 overflow-hidden lg:grid-cols-[minmax(0,1fr)_300px] lg:grid-rows-1 lg:items-stretch">
+        <div className="flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-hidden">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             <label className="btn-secondary inline-flex cursor-pointer items-center gap-2 text-sm">
               <ImagePlus className="h-4 w-4" />
               Upload image
@@ -847,7 +1343,7 @@ export function MapShapeEditor({
             </span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 text-xs text-violet-300/55">
+          <div className="flex shrink-0 flex-wrap items-center gap-3 text-xs text-violet-300/55">
             <div className="flex flex-wrap gap-2">
               <span className="inline-flex items-center gap-1 rounded border border-violet-800/40 px-2 py-0.5">
                 <Swords className="h-3.5 w-3.5 text-violet-300" />
@@ -859,7 +1355,9 @@ export function MapShapeEditor({
               </span>
             </div>
             <span className="text-violet-300/40">
-              Scroll wheel on the map to zoom (pointer over canvas).
+              Scroll to zoom. Right-drag to pan when zoomed. Drag the map panel
+              corner to resize — grows with the layout, with caps on huge
+              displays.
             </span>
             {viewport && (
               <button
@@ -873,17 +1371,38 @@ export function MapShapeEditor({
           </div>
 
           <div
-            className="overflow-hidden rounded-xl border border-violet-500/25 bg-black/40"
+            className="box-border mx-auto flex w-full max-w-[min(100%,var(--map-vp-max-w))] flex-1 overflow-auto rounded-xl border border-violet-500/25 bg-black/40 min-h-[var(--map-vp-min-h)] min-w-[var(--map-vp-min-w)] max-h-[min(100%,min(var(--map-vp-max-dvh),var(--map-vp-max-h)))]"
+            style={
+              {
+                resize: "both",
+                "--map-vp-min-w": `${MAP_VIEWPORT_MIN_W_PX}px`,
+                "--map-vp-min-h": `${MAP_VIEWPORT_MIN_H_PX}px`,
+                "--map-vp-max-w": `${MAP_VIEWPORT_MAX_W_PX}px`,
+                "--map-vp-max-h": `${MAP_VIEWPORT_MAX_H_PX}px`,
+                "--map-vp-max-dvh": `${MAP_VIEWPORT_MAX_DVH}dvh`,
+              } as CSSProperties
+            }
             onKeyDown={(e) => e.stopPropagation()}
+            onContextMenu={(e) => e.preventDefault()}
           >
             <svg
               ref={svgRef}
               role="img"
               aria-label="Map reference and trace canvas"
               viewBox={`${displayVb.minX} ${displayVb.minY} ${displayVb.width} ${displayVb.height}`}
-              className="h-[min(480px,70vh)] w-full cursor-crosshair touch-none bg-zinc-950"
+              className={`block h-full min-h-[var(--map-vp-min-h)] w-full min-w-[var(--map-vp-min-w)] touch-none bg-zinc-950 ${
+                rightPanning ? "cursor-grabbing" : "cursor-crosshair"
+              }`}
               style={{ userSelect: tool === "edit" ? "none" : undefined }}
               onPointerDown={onSvgPointerDown}
+              onPointerMove={onSvgPointerMove}
+              onPointerUp={endRightPan}
+              onPointerCancel={endRightPan}
+              onLostPointerCapture={() => {
+                panDragRef.current = null;
+                setRightPanning(false);
+              }}
+              onContextMenu={(e) => e.preventDefault()}
             >
               {refUrl ? (
                 <image
@@ -960,20 +1479,28 @@ export function MapShapeEditor({
                 }
               >
                 {overlays.map((sh) => {
+                  const hl = sidebarHoverOverlayId === sh.id;
+                  if (sh.kind === "grade") {
+                    return (
+                      <GradeOverlaySvg
+                        key={sh.id}
+                        sh={sh}
+                        vbWidth={vb.width}
+                        highlight={hl}
+                      />
+                    );
+                  }
                   const d = previewOpenOrClosed(sh.points);
                   if (!d) return null;
-                  const isOb = sh.kind === "obstacle";
+                  const poly = overlayPolygonStyleHover(sh.kind, hl);
+                  if (!poly) return null;
                   return (
                     <path
                       key={sh.id}
                       d={d}
-                      fill={
-                        isOb
-                          ? "rgba(251,191,36,0.14)"
-                          : "rgba(52,211,153,0.14)"
-                      }
-                      stroke={isOb ? "rgb(251,191,36)" : "rgb(52,211,153)"}
-                      strokeWidth={vb.width * 0.003}
+                      fill={poly.fill}
+                      stroke={poly.stroke}
+                      strokeWidth={vb.width * 0.003 * (hl ? 2.2 : 1)}
                       strokeLinejoin="round"
                       pointerEvents="none"
                     />
@@ -996,18 +1523,24 @@ export function MapShapeEditor({
                         key={`ov-passive-${sh.id}-${i}`}
                         cx={p.x}
                         cy={p.y}
-                        r={hitRadius * 0.55}
-                        fill={
-                          sh.kind === "obstacle"
-                            ? "rgba(251,191,36,0.45)"
-                            : "rgba(52,211,153,0.45)"
-                        }
+                        r={passiveVertexRadius}
+                        fill={overlayPassiveFillHover(
+                          sh.kind,
+                          sidebarHoverOverlayId === sh.id,
+                        )}
                         stroke="rgba(255,255,255,0.85)"
-                        strokeWidth={vb.width * 0.001}
+                        strokeWidth={passiveVertexStrokeW}
                         style={{ cursor: "pointer" }}
-                        onPointerDown={(e) =>
-                          activateOverlayVertexDrag(e, sh, i)
-                        }
+                        onPointerDown={(e) => {
+                          if (e.button === 2) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (tool !== "edit") return;
+                            removeVertexAt({ kind: "overlay", id: sh.id }, i);
+                            return;
+                          }
+                          activateOverlayVertexDrag(e, sh, i);
+                        }}
                       />,
                     ];
                   }),
@@ -1031,7 +1564,7 @@ export function MapShapeEditor({
                       }
                       fillOpacity={tool === "draw" ? 0.35 : 0.95}
                       stroke="white"
-                      strokeWidth={vb.width * 0.0015}
+                      strokeWidth={vertexStrokeW}
                       style={{
                         cursor:
                           tool === "edit" ? "grab" : "crosshair",
@@ -1069,7 +1602,7 @@ export function MapShapeEditor({
                       }
                       fillOpacity={tool === "draw" ? 0.35 : 0.95}
                       stroke="white"
-                      strokeWidth={vb.width * 0.0015}
+                      strokeWidth={vertexStrokeW}
                       style={{
                         cursor:
                           tool === "edit" ? "grab" : "crosshair",
@@ -1089,9 +1622,10 @@ export function MapShapeEditor({
                 })}
 
               {activeLayer.kind === "overlay" &&
-                overlays
-                  .find((s) => s.id === activeLayer.id)
-                  ?.points.map((p, i) => {
+                (() => {
+                  const activeOv = overlays.find((s) => s.id === activeLayer.id);
+                  if (!activeOv) return null;
+                  return activeOv.points.map((p, i) => {
                     const sel =
                       selection?.kind === "overlay" &&
                       selection.shapeId === activeLayer.id &&
@@ -1102,12 +1636,10 @@ export function MapShapeEditor({
                         cx={p.x}
                         cy={p.y}
                         r={hitRadius}
-                        fill={
-                          sel ? "rgb(250,250,250)" : "rgb(253,224,71)"
-                        }
+                        fill={overlayActiveVertexFill(activeOv.kind, sel)}
                         fillOpacity={tool === "draw" ? 0.35 : 0.95}
                         stroke="white"
-                        strokeWidth={vb.width * 0.0015}
+                        strokeWidth={vertexStrokeW}
                         style={{
                           cursor:
                             tool === "edit" ? "grab" : "crosshair",
@@ -1125,12 +1657,15 @@ export function MapShapeEditor({
                         onPointerCancel={onVertexPointerUp}
                       />
                     );
-                  })}
+                  });
+                })()}
             </svg>
           </div>
         </div>
 
-        <aside className="space-y-4 rounded-xl border border-violet-500/20 bg-slate-950/50 p-4">
+        <aside
+          className="flex min-h-0 flex-col space-y-4 overflow-y-auto overscroll-y-contain rounded-xl border border-violet-500/20 bg-slate-950/50 p-4 [scrollbar-gutter:stable] lg:h-full lg:max-h-full lg:min-h-0"
+        >
           <div>
             <span className="label">Tool</span>
             <div className="mt-2 flex rounded-lg border border-violet-800/50 p-0.5">
@@ -1183,101 +1718,173 @@ export function MapShapeEditor({
                 <Swords className="h-4 w-4 shrink-0" />
                 Outer boundary (attack)
               </button>
-              {outlineHoles.map((hole, hi) => (
-                <div
-                  key={`hole-layer-${hi}`}
-                  className={`flex items-center gap-1 ${
-                    activeLayer.kind === "outline" &&
-                    activeLayer.holeIndex === hi
-                      ? "rounded-lg border border-pink-500/35 bg-pink-950/20 p-1"
-                      : ""
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveLayer({ kind: "outline", holeIndex: hi });
-                      setSelection(null);
-                    }}
-                    className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm ${
-                      activeLayer.kind === "outline" &&
-                      activeLayer.holeIndex === hi
-                        ? "border-transparent bg-transparent text-white"
-                        : "border-violet-800/40 text-violet-200/80 hover:bg-violet-950/30"
-                    }`}
-                  >
-                    <CircleSlash2 className="h-4 w-4 shrink-0 text-pink-300" />
-                    <span className="truncate">Hole {hi + 1}</span>
-                    <span className="font-mono text-xs text-violet-500">
-                      {hole.length} pts
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    title="Remove hole"
-                    onClick={() => removeOutlineHole(hi)}
-                    className="shrink-0 rounded p-2 text-fuchsia-300 hover:bg-fuchsia-950/40"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              ))}
-              <button
-                type="button"
-                onClick={addOutlineHole}
-                disabled={!outlineReady}
-                title={
-                  outlineReady
-                    ? "Add a closed polygon that cuts out from the outline"
-                    : "Define the outer outline first (≥3 points)"
-                }
-                className="btn-secondary inline-flex w-full items-center justify-center gap-1.5 text-xs disabled:opacity-40"
+              <details
+                open
+                className="overflow-hidden rounded-lg border border-pink-800/35 bg-pink-950/15 [&[open]>summary_.chevron-ov]:rotate-90"
               >
-                <Plus className="h-3.5 w-3.5" />
-                Add hole
-              </button>
-              {overlays.map((sh) => (
-                <div
-                  key={sh.id}
-                  className={`flex items-center gap-1 ${
-                    activeLayer.kind === "overlay" && activeLayer.id === sh.id
-                      ? "rounded-lg border border-amber-500/40 bg-amber-950/20 p-1"
-                      : ""
-                  }`}
-                >
+                <summary className="flex cursor-pointer list-none items-center gap-2 px-2 py-2 text-sm font-medium text-pink-100/95 hover:bg-pink-950/35 [&::-webkit-details-marker]:hidden">
+                  <ChevronRight className="chevron-ov h-4 w-4 shrink-0 text-pink-400 transition-transform" />
+                  <CircleSlash2 className="h-4 w-4 shrink-0 text-pink-300" />
+                  <span className="min-w-0 flex-1">Holes</span>
+                  <span className="font-mono text-xs font-normal text-violet-500">
+                    {outlineHoles.length}
+                  </span>
+                </summary>
+                <div className="space-y-1 border-t border-pink-800/25 px-1 py-2">
+                  {outlineHoles.map((hole, hi) => (
+                    <div
+                      key={`hole-layer-${hi}`}
+                      className={`flex items-center gap-1 ${
+                        activeLayer.kind === "outline" &&
+                        activeLayer.holeIndex === hi
+                          ? "rounded-lg border border-pink-500/35 bg-pink-950/20 p-1"
+                          : ""
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveLayer({ kind: "outline", holeIndex: hi });
+                          setSelection(null);
+                        }}
+                        className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm ${
+                          activeLayer.kind === "outline" &&
+                          activeLayer.holeIndex === hi
+                            ? "border-transparent bg-transparent text-white"
+                            : "border-violet-800/40 text-violet-200/80 hover:bg-violet-950/30"
+                        }`}
+                      >
+                        <span className="truncate tabular-nums text-pink-200/90">
+                          #{hi + 1}
+                        </span>
+                        <span className="font-mono text-xs text-violet-500">
+                          {hole.length} pts
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        title="Remove hole"
+                        onClick={() => removeOutlineHole(hi)}
+                        className="shrink-0 rounded p-2 text-fuchsia-300 hover:bg-fuchsia-950/40"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
                   <button
                     type="button"
-                    onClick={() => {
-                      setActiveLayer({ kind: "overlay", id: sh.id });
-                      setSelection(null);
-                    }}
-                    className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm ${
-                      activeLayer.kind === "overlay" &&
-                      activeLayer.id === sh.id
-                        ? "border-transparent bg-transparent text-white"
-                        : "border-violet-800/40 text-violet-200/80 hover:bg-violet-950/30"
-                    }`}
+                    onClick={addOutlineHole}
+                    disabled={!outlineReady}
+                    title={
+                      outlineReady
+                        ? "Add a closed polygon that cuts out from the outline"
+                        : "Define the outer outline first (≥3 points)"
+                    }
+                    className="btn-secondary inline-flex w-full items-center justify-center gap-1.5 text-xs disabled:opacity-40"
                   >
-                    {sh.kind === "obstacle" ? (
-                      <Octagon className="h-4 w-4 shrink-0 text-amber-300" />
-                    ) : (
-                      <Mountain className="h-4 w-4 shrink-0 text-emerald-300" />
-                    )}
-                    <span className="truncate capitalize">{sh.kind}</span>
-                    <span className="font-mono text-xs text-violet-500">
-                      {sh.points.length} pts
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    title="Remove layer"
-                    onClick={() => removeOverlay(sh.id)}
-                    className="shrink-0 rounded p-2 text-fuchsia-300 hover:bg-fuchsia-950/40"
-                  >
-                    <Trash2 className="h-4 w-4" />
+                    <Plus className="h-3.5 w-3.5" />
+                    Add hole
                   </button>
                 </div>
-              ))}
+              </details>
+              <div
+                className="space-y-2"
+                onMouseLeave={() => setSidebarHoverOverlayId(null)}
+              >
+                {OVERLAY_KIND_ORDER.map((kind) => {
+                  const items = overlays.filter((o) => o.kind === kind);
+                  if (items.length === 0) return null;
+                  const sectionIcon =
+                    kind === "obstacle" ? (
+                      <Octagon className="h-4 w-4 shrink-0 text-amber-300" />
+                    ) : kind === "elevation" ? (
+                      <Mountain className="h-4 w-4 shrink-0 text-emerald-300" />
+                    ) : kind === "wall" ? (
+                      <BrickWall className="h-4 w-4 shrink-0 text-slate-300" />
+                    ) : (
+                      <ArrowUpFromLine className="h-4 w-4 shrink-0 text-cyan-300" />
+                    );
+                  const sectionTitle =
+                    kind === "obstacle"
+                      ? "Obstacles"
+                      : kind === "elevation"
+                        ? "Elevation"
+                        : kind === "wall"
+                          ? "Walls"
+                          : "Grade lines";
+                  return (
+                    <details
+                      key={kind}
+                      open
+                      className="overflow-hidden rounded-lg border border-violet-800/35 bg-slate-900/40 [&[open]>summary_.chevron-ov]:rotate-90"
+                    >
+                      <summary className="flex cursor-pointer list-none items-center gap-2 px-2 py-2 text-sm font-medium text-violet-100 hover:bg-violet-950/35 [&::-webkit-details-marker]:hidden">
+                        <ChevronRight className="chevron-ov h-4 w-4 shrink-0 text-violet-400 transition-transform" />
+                        {sectionIcon}
+                        <span className="min-w-0 flex-1">{sectionTitle}</span>
+                        <span className="font-mono text-xs font-normal text-violet-500">
+                          {items.length}
+                        </span>
+                      </summary>
+                      <div className="space-y-1 border-t border-violet-800/25 px-1 py-2">
+                        {items.map((sh, idx) => {
+                          const activeOv =
+                            activeLayer.kind === "overlay" &&
+                            activeLayer.id === sh.id;
+                          const activeRing =
+                            activeOv && sh.kind === "grade"
+                              ? "rounded-lg border border-cyan-500/40 bg-cyan-950/20 p-1"
+                              : activeOv && sh.kind === "wall"
+                                ? "rounded-lg border border-slate-500/40 bg-slate-900/25 p-1"
+                                : activeOv && sh.kind === "elevation"
+                                  ? "rounded-lg border border-emerald-500/35 bg-emerald-950/20 p-1"
+                                  : activeOv
+                                    ? "rounded-lg border border-amber-500/40 bg-amber-950/20 p-1"
+                                    : "";
+                          return (
+                            <div
+                              key={sh.id}
+                              className={`flex items-center gap-1 ${activeRing}`}
+                              onMouseEnter={() =>
+                                setSidebarHoverOverlayId(sh.id)
+                              }
+                            >
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setActiveLayer({ kind: "overlay", id: sh.id });
+                                  setSelection(null);
+                                }}
+                                className={`flex min-w-0 flex-1 items-center gap-2 rounded-lg border px-3 py-2 text-left text-sm ${
+                                  activeLayer.kind === "overlay" &&
+                                  activeLayer.id === sh.id
+                                    ? "border-transparent bg-transparent text-white"
+                                    : "border-violet-800/40 text-violet-200/80 hover:bg-violet-950/30"
+                                }`}
+                              >
+                                <span className="truncate tabular-nums text-violet-300/90">
+                                  #{idx + 1}
+                                </span>
+                                <span className="font-mono text-xs text-violet-500">
+                                  {sh.points.length} pts
+                                </span>
+                              </button>
+                              <button
+                                type="button"
+                                title="Remove layer"
+                                onClick={() => removeOverlay(sh.id)}
+                                className="shrink-0 rounded p-2 text-fuchsia-300 hover:bg-fuchsia-950/40"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </details>
+                  );
+                })}
+              </div>
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
               <button
@@ -1308,11 +1915,51 @@ export function MapShapeEditor({
                 <Mountain className="h-3.5 w-3.5" />
                 Elevation
               </button>
+              <button
+                type="button"
+                onClick={() => addOverlay("wall")}
+                disabled={!outlineReady}
+                title={
+                  outlineReady
+                    ? "Add a wall or solid barrier polygon"
+                    : "Define the map outline first"
+                }
+                className="btn-secondary inline-flex items-center gap-1 text-xs disabled:opacity-40"
+              >
+                <BrickWall className="h-3.5 w-3.5" />
+                Wall
+              </button>
+              <button
+                type="button"
+                onClick={() => addOverlay("grade")}
+                disabled={!outlineReady}
+                title={
+                  outlineReady
+                    ? "Step-edge polyline: higher vs lower ground along each segment"
+                    : "Define the map outline first"
+                }
+                className="btn-secondary inline-flex items-center gap-1 text-xs disabled:opacity-40"
+              >
+                <ArrowUpFromLine className="h-3.5 w-3.5" />
+                Grade
+              </button>
             </div>
+            {activeLayer.kind === "overlay" &&
+              overlays.find((o) => o.id === activeLayer.id)?.kind ===
+                "grade" && (
+                <button
+                  type="button"
+                  onClick={flipGradeHighSide}
+                  className="btn-secondary mt-2 inline-flex w-full items-center justify-center gap-1.5 text-xs"
+                  title="Swap which side of the segment is higher ground (left vs right of the line direction)"
+                >
+                  <ArrowLeftRight className="h-3.5 w-3.5" />
+                  Flip higher side
+                </button>
+              )}
             {!outlineReady && (
               <p className="mt-2 text-xs text-amber-200/70">
-                Close the purple outline (≥3 points) before obstacles or
-                elevation.
+                Close the purple outline (≥3 points) before adding overlays.
               </p>
             )}
           </div>
@@ -1324,8 +1971,11 @@ export function MapShapeEditor({
                 Selection
               </span>
               <p className="text-xs text-violet-300/55">
-                Shift+click vertices to multi-select. Two or more: align axes.
-                Delete / Backspace removes selected vertices.
+                Click near an edge to add a vertex on that segment (including
+                grade polylines). Right-click a vertex to remove it. Shift+click
+                vertices to multi-select. Two or more: align axes. For grade
+                layers, use Flip higher side in the sidebar. Delete / Backspace
+                removes selected vertices.
               </p>
               <div className="flex flex-wrap gap-2">
                 <button

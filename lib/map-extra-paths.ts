@@ -16,7 +16,14 @@ export function normalizeExtraPaths(raw: unknown): MapOverlayShape[] {
     const o = item as Record<string, unknown>;
     const id = typeof o.id === "string" && o.id ? o.id : newId();
     let kind: MapOverlayKind | null = null;
-    if (o.kind === "obstacle" || o.kind === "elevation") kind = o.kind;
+    if (
+      o.kind === "obstacle" ||
+      o.kind === "elevation" ||
+      o.kind === "wall" ||
+      o.kind === "grade"
+    ) {
+      kind = o.kind;
+    }
     if (!kind) continue;
     const pts = Array.isArray(o.points) ? o.points : [];
     const points: MapPoint[] = [];
@@ -28,7 +35,12 @@ export function normalizeExtraPaths(raw: unknown): MapOverlayShape[] {
         points.push({ x: px, y: py });
       }
     }
-    out.push({ id, kind, points });
+    let gradeHighSide: 1 | -1 | undefined;
+    if (kind === "grade") {
+      const g = o.gradeHighSide;
+      gradeHighSide = g === -1 ? -1 : 1;
+    }
+    out.push({ id, kind, points, gradeHighSide });
   }
   return out;
 }

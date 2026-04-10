@@ -6,9 +6,9 @@ export default function CoachDashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <>
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <CoachNav />
-      {children}
-    </>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
+    </div>
   );
 }

@@ -23,9 +23,9 @@ export default async function CoachMapEditPage({ params }: Props) {
   const outlineRingsInitial = initialOutlineRings(map);
 
   return (
-    <main className="flex flex-1 flex-col">
-      <div className="border-b border-violet-500/15 px-4 py-6">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-4">
+    <main className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="shrink-0 border-b border-violet-500/15 px-4 py-4 sm:py-5">
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-4">
           <Link
             href="/coach/maps"
             className="text-sm text-violet-300/70 hover:text-white"
@@ -34,7 +34,7 @@ export default async function CoachMapEditPage({ params }: Props) {
           </Link>
         </div>
       </div>
-      <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-4 pb-4 pt-4 sm:px-5 sm:pb-5 sm:pt-5">
         <MapShapeEditor
           key={mapId}
           mapId={mapId}

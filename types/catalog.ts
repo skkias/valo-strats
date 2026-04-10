@@ -16,13 +16,25 @@ export interface MapImageTransform {
   ty: number;
 }
 
-export type MapOverlayKind = "obstacle" | "elevation";
+export type MapOverlayKind =
+  | "obstacle"
+  | "elevation"
+  | "wall"
+  /**
+   * Polyline: higher vs lower ground along each segment (left of each p[i]→p[i+1]).
+   */
+  | "grade";
 
-/** Closed polygon overlays (walls, elevation) in viewBox space. */
+/** Polygons (`obstacle` | `elevation` | `wall`) or a grade polyline in viewBox space. */
 export interface MapOverlayShape {
   id: string;
   kind: MapOverlayKind;
   points: MapPoint[];
+  /**
+   * For `grade` only: +1 = higher ground to the left of each segment direction,
+   * -1 = higher to the right. Ignored for polygon kinds.
+   */
+  gradeHighSide?: 1 | -1;
 }
 
 /** Row from `public.maps` — reference art + vector outlines per side. */
@@ -41,7 +53,7 @@ export interface GameMap {
   path_atk: string | null;
   /** Auto-derived mirror of `path_atk`; kept for consumers / SQL. */
   path_def: string | null;
-  /** Obstacle & elevation polygons (JSON in DB). */
+  /** Obstacles, elevation, walls, and grade lines (JSON in DB). */
   extra_paths: MapOverlayShape[];
   sort_order: number;
 }

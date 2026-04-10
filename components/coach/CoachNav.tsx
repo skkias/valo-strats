@@ -16,7 +16,7 @@ export function CoachNav() {
   const pathname = usePathname();
   return (
     <nav
-      className="border-b border-violet-500/20 bg-slate-950/55 backdrop-blur-sm"
+      className="shrink-0 border-b border-violet-500/20 bg-slate-950/55 backdrop-blur-sm"
       aria-label="Coach sections"
     >
       <div className="mx-auto flex max-w-6xl gap-1 px-4 py-2">

@@ -26,10 +26,10 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} min-h-dvh antialiased`}
     >
-      <body className="min-h-full flex flex-col text-slate-100">
-        <header className="sticky top-0 z-40 border-b border-violet-500/15 bg-slate-950/75 backdrop-blur-md">
+      <body className="flex h-dvh max-h-dvh flex-col overflow-hidden text-slate-100">
+        <header className="sticky top-0 z-40 shrink-0 border-b border-violet-500/15 bg-slate-950/75 backdrop-blur-md">
           <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
             <Link
               href="/"
@@ -59,7 +59,9 @@ export default function RootLayout({
             </nav>
           </div>
         </header>
-        <div className="flex flex-1 flex-col">{children}</div>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-x-auto overflow-y-auto">
+          {children}
+        </div>
       </body>
     </html>
   );
