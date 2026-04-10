@@ -1622,7 +1622,7 @@ export function MapShapeEditor({
       <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)_minmax(0,min(50dvh,32rem))] gap-6 overflow-hidden lg:grid-cols-[minmax(0,1fr)_300px] lg:grid-rows-1 lg:items-stretch">
         <div className="flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-hidden">
           <div
-            className="mx-auto flex w-full min-w-0 max-w-[min(100%,var(--map-vp-max-w))] flex-col gap-3"
+            className="mx-auto flex min-h-0 w-full min-w-0 max-w-[min(100%,var(--map-vp-max-w))] flex-1 flex-col gap-3"
             style={mapPanelVars}
           >
             <div className="min-w-0 shrink-0 overflow-x-auto rounded-lg border border-violet-500/20 bg-slate-950/60 px-2 py-2 shadow-sm">
@@ -1732,7 +1732,7 @@ export function MapShapeEditor({
           )}
 
           <div
-            className="box-border w-full flex-1 overflow-auto rounded-xl border border-violet-500/25 bg-black/40 min-h-[var(--map-vp-min-h)] min-w-[var(--map-vp-min-w)] max-h-[min(100%,min(var(--map-vp-max-dvh),var(--map-vp-max-h)))]"
+            className="box-border flex min-h-0 w-full min-w-[var(--map-vp-min-w)] flex-1 overflow-auto rounded-xl border border-violet-500/25 bg-black/40 max-h-[min(100%,min(var(--map-vp-max-dvh),var(--map-vp-max-h)))]"
             style={{ ...mapPanelVars, resize: "both" }}
             onKeyDown={(e) => e.stopPropagation()}
             onContextMenu={(e) => e.preventDefault()}
