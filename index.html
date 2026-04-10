@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Team Strats</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&family=Inter:wght@300;400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg:        #0a0b0d;
+      --surface:   #111318;
+      --surface2:  #181b22;
+      --border:    #1f2330;
+      --red:       #ff4655;
+      --red-dim:   rgba(255,70,85,0.12);
+      --red-glow:  rgba(255,70,85,0.25);
+      --gold:      #c8a96e;
+      --text:      #e8eaf0;
+      --muted:     #6b7280;
+      --tag-atk:   rgba(255,100,60,0.18);
+      --tag-atk-t: #ff7c5c;
+      --tag-def:   rgba(60,160,255,0.18);
+      --tag-def-t: #60b8ff;
+      --tag-mid:   rgba(160,100,255,0.18);
+      --tag-mid-t: #c47fff;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', sans-serif;
+      font-weight: 300;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── NOISE TEXTURE ── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+      pointer-events: none; z-index: 0;
+    }
+
+    /* ── TOP BAR ── */
+    header {
+      position: relative; z-index: 10;
+      border-bottom: 1px solid var(--border);
+      padding: 0 2.5rem;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 64px;
+      background: rgba(10,11,13,0.95);
+      backdrop-filter: blur(12px);
+    }
+
+    .logo {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700;
+      font-size: 1.3rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .logo-mark {
+      width: 28px; height: 28px;
+      background: var(--red);
+      clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.65rem; color: #fff; font-weight: 700;
+    }
+
+    .header-meta {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+    }
+    .header-meta span { color: var(--red); }
+
+    /* ── PAGE LAYOUT ── */
+    main {
+      position: relative; z-index: 1;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 3rem 2rem 5rem;
+    }
+
+    /* ── SECTION HEADER ── */
+    .section-label {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.65rem;
+      letter-spacing: 0.2em;
+      color: var(--red);
+      text-transform: uppercase;
+      margin-bottom: 0.5rem;
+    }
+    .section-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700;
+      font-size: 2.4rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      line-height: 1;
+      margin-bottom: 2.5rem;
+    }
+    .section-title span { color: var(--red); }
+
+    /* ── FILTER BAR ── */
+    .filters {
+      display: flex; gap: 0.5rem; flex-wrap: wrap;
+      margin-bottom: 2rem;
+    }
+    .filter-btn {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 600;
+      font-size: 0.8rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 6px 16px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.15s;
+      clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
+    }
+    .filter-btn:hover { border-color: var(--red); color: var(--text); }
+    .filter-btn.active {
+      background: var(--red); border-color: var(--red);
+      color: #fff;
+    }
+
+    /* ── STRAT GRID ── */
+    .strat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 1.25rem;
+    }
+
+    /* ── STRAT CARD ── */
+    .strat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: border-color 0.2s, transform 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .strat-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0;
+      width: 3px; height: 100%;
+      background: var(--red);
+      transform: scaleY(0); transform-origin: top;
+      transition: transform 0.2s;
+    }
+    .strat-card:hover { border-color: rgba(255,70,85,0.4); transform: translateY(-2px); }
+    .strat-card:hover::before { transform: scaleY(1); }
+
+    .card-header {
+      padding: 1rem 1.25rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;
+    }
+    .card-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700;
+      font-size: 1.15rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      line-height: 1.2;
+    }
+    .card-map {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.65rem;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      margin-top: 3px;
+    }
+
+    .tag {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 600;
+      font-size: 0.7rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      padding: 3px 10px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .tag-atk  { background: var(--tag-atk);  color: var(--tag-atk-t); }
+    .tag-def  { background: var(--tag-def);  color: var(--tag-def-t); }
+    .tag-mid  { background: var(--tag-mid);  color: var(--tag-mid-t); }
+
+    .card-body { padding: 1rem 1.25rem; }
+
+    .card-desc {
+      font-size: 0.82rem;
+      color: #9ca3af;
+      line-height: 1.6;
+      margin-bottom: 1rem;
+    }
+
+    .agents-row {
+      display: flex; gap: 6px; flex-wrap: wrap;
+      margin-bottom: 1rem;
+    }
+    .agent-pill {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.68rem;
+      color: var(--gold);
+      background: rgba(200,169,110,0.1);
+      border: 1px solid rgba(200,169,110,0.25);
+      padding: 2px 9px;
+      letter-spacing: 0.05em;
+    }
+
+    .card-footer {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.6rem 1.25rem;
+      border-top: 1px solid var(--border);
+      background: var(--surface2);
+    }
+    .view-btn {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 600;
+      font-size: 0.75rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--red);
+      background: none; border: none; cursor: pointer;
+      display: flex; align-items: center; gap: 6px;
+      transition: gap 0.15s;
+    }
+    .view-btn:hover { gap: 10px; }
+    .view-btn svg { width: 14px; height: 14px; }
+
+    .difficulty {
+      display: flex; gap: 3px; align-items: center;
+    }
+    .pip {
+      width: 6px; height: 6px;
+      background: var(--border);
+      border-radius: 50%;
+    }
+    .pip.filled { background: var(--red); }
+
+    /* ── MODAL OVERLAY ── */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(5,6,8,0.9);
+      backdrop-filter: blur(8px);
+      z-index: 100;
+      display: flex; align-items: center; justify-content: center;
+      padding: 1.5rem;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.2s;
+    }
+    .modal-overlay.open { opacity: 1; pointer-events: all; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      width: 100%; max-width: 820px;
+      max-height: 90vh;
+      overflow-y: auto;
+      position: relative;
+      transform: translateY(16px);
+      transition: transform 0.2s;
+    }
+    .modal-overlay.open .modal { transform: translateY(0); }
+
+    .modal-topbar {
+      position: sticky; top: 0;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 1.5rem;
+      display: flex; align-items: center; justify-content: space-between;
+      z-index: 10;
+    }
+    .modal-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700;
+      font-size: 1.4rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .modal-close {
+      background: none; border: 1px solid var(--border);
+      color: var(--muted); cursor: pointer;
+      width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.1rem; transition: all 0.15s;
+    }
+    .modal-close:hover { border-color: var(--red); color: var(--red); }
+
+    .modal-body { padding: 1.5rem; }
+
+    /* images row */
+    .strat-images {
+      display: grid;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+    .strat-images.one   { grid-template-columns: 1fr; }
+    .strat-images.two   { grid-template-columns: 1fr 1fr; }
+    .strat-images.three { grid-template-columns: 1fr 1fr 1fr; }
+
+    .strat-img-wrap {
+      position: relative;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      background: #0d0f13;
+    }
+    .strat-img-wrap img {
+      width: 100%; display: block;
+      transition: transform 0.3s;
+    }
+    .strat-img-wrap:hover img { transform: scale(1.03); }
+    .img-label {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: linear-gradient(transparent, rgba(0,0,0,0.75));
+      padding: 0.5rem 0.75rem 0.4rem;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.65rem;
+      color: rgba(255,255,255,0.6);
+      letter-spacing: 0.1em;
+    }
+
+    /* steps */
+    .steps-title {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700;
+      font-size: 0.85rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.75rem;
+    }
+    .steps { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.5rem; }
+
+    .step {
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 0.75rem;
+      align-items: start;
+    }
+    .step-num {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 0.7rem;
+      color: var(--red);
+      background: var(--red-dim);
+      width: 28px; height: 28px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .step-text {
+      font-size: 0.85rem;
+      color: #c9ccd4;
+      line-height: 1.6;
+      padding-top: 4px;
+    }
+    .step-text strong { color: var(--text); font-weight: 500; }
+
+    /* roles */
+    .roles-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .role-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      padding: 0.75rem;
+    }
+    .role-agent {
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 700;
+      font-size: 0.95rem;
+      letter-spacing: 0.06em;
+      color: var(--gold);
+      margin-bottom: 0.25rem;
+    }
+    .role-desc { font-size: 0.78rem; color: var(--muted); line-height: 1.5; }
+
+    /* notes */
+    .notes-box {
+      background: var(--red-dim);
+      border-left: 3px solid var(--red);
+      padding: 0.9rem 1rem;
+    }
+    .notes-box p { font-size: 0.82rem; color: #c9ccd4; line-height: 1.65; }
+    .notes-box strong { color: var(--red); font-weight: 500; }
+
+    /* ── SCROLLBAR ── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); }
+    ::-webkit-scrollbar-thumb:hover { background: var(--red); }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 600px) {
+      .strat-images.two, .strat-images.three { grid-template-columns: 1fr; }
+      header { padding: 0 1rem; }
+      main { padding: 2rem 1rem 4rem; }
+      .section-title { font-size: 1.8rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="logo">
+      <div class="logo-mark">S</div>
+      <span>STRAT<span style="color:var(--red)">BOOK</span></span>
+    </div>
+    <div class="header-meta">SEASON <span>2025</span> &nbsp;·&nbsp; <span id="strat-count">0</span> STRATS LOADED</div>
+  </header>
+
+  <main>
+    <div class="section-label">// TACTICAL DATABASE</div>
+    <div class="section-title">TEAM <span>STRATS</span></div>
+
+    <div class="filters" id="filters">
+      <button class="filter-btn active" data-filter="all">All</button>
+      <button class="filter-btn" data-filter="atk">Attack</button>
+      <button class="filter-btn" data-filter="def">Defense</button>
+      <button class="filter-btn" data-filter="ascent">Ascent</button>
+      <button class="filter-btn" data-filter="bind">Bind</button>
+      <button class="filter-btn" data-filter="haven">Haven</button>
+      <button class="filter-btn" data-filter="split">Split</button>
+      <button class="filter-btn" data-filter="lotus">Lotus</button>
+    </div>
+
+    <div class="strat-grid" id="strat-grid"></div>
+  </main>
+
+  <!-- MODAL -->
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal" id="modal">
+      <div class="modal-topbar">
+        <div>
+          <div class="modal-title" id="modal-title"></div>
+          <div class="card-map" id="modal-map"></div>
+        </div>
+        <button class="modal-close" id="modal-close">✕</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+<script>
+// ─────────────────────────────────────────────
+//  STRAT DATA — edit this to add/change strats
+// ─────────────────────────────────────────────
+const STRATS = [
+  {
+    id: 1,
+    title: "A Default",
+    map: "Ascent",
+    side: "atk",
+    tags: ["ascent", "atk"],
+    agents: ["Jett", "Brimstone", "Sova", "KAY/O", "Killjoy"],
+    difficulty: 2, // 1–3 pips
+    desc: "Controlled A site take with smokes on CT and Generator. Sova dart to clear boxes before entry.",
+    // ── Add your valoplant screenshot URLs here ──
+    images: [
+      { url: "https://placehold.co/800x450/111318/ff4655?text=Valoplant+Screenshot+1", label: "Initial Smoke Setup" },
+      { url: "https://placehold.co/800x450/111318/ff4655?text=Valoplant+Screenshot+2", label: "Post-Plant Positions" }
+    ],
+    steps: [
+      { text: "<strong>KAY/O</strong> pops mid link flash and holds A main aggro." },
+      { text: "<strong>Brimstone</strong> smokes CT, Generator, and Catwalk simultaneously on commit." },
+      { text: "<strong>Sova</strong> recon darts A main boxes from courtyard — call clears before entry." },
+      { text: "<strong>Jett</strong> dashes onto site as smoke lands, takes Generator angle." },
+      { text: "<strong>Killjoy</strong> enters last, plants A default, deploys nanoswarm on default plant spot post." }
+    ],
+    roles: [
+      { agent: "Jett",      desc: "Entry fragging. Dash onto site immediately after first smoke." },
+      { agent: "Brimstone", desc: "Triple smoke on commit. Stay back until smokes land." },
+      { agent: "Sova",      desc: "Recon dart before entry. Follow second into site." },
+      { agent: "KAY/O",     desc: "Flash into site, pressure mid link to stop rotations." },
+      { agent: "Killjoy",   desc: "Trail entry, plant, hold post-plant with nanoswarm." }
+    ],
+    notes: "<strong>Timing is everything.</strong> Brim smokes must land before Jett dashes. If Sova dart catches someone CT, consider re-routing through mid. Abort if 2+ defenders spotted lurking B."
+  },
+  {
+    id: 2,
+    title: "B Rush",
+    map: "Ascent",
+    side: "atk",
+    tags: ["ascent", "atk"],
+    agents: ["Raze", "Skye", "Brimstone", "Omen", "Killjoy"],
+    difficulty: 1,
+    desc: "Fast 5-man B rush with flashes and smokes to overwhelm defenders before rotations arrive.",
+    images: [
+      { url: "https://placehold.co/800x450/111318/ff4655?text=B+Rush+Setup", label: "Pre-Rush Positions" }
+    ],
+    steps: [
+      { text: "<strong>Omen</strong> smokes B main and Market window simultaneously." },
+      { text: "<strong>Skye</strong> sends Trailblazer into B site, then pops flashes through Market." },
+      { text: "<strong>Raze</strong> satchels to front of B main, grenades into site." },
+      { text: "Full team stacks B main — all push simultaneously on Skye flash." },
+      { text: "<strong>Killjoy</strong> plants default, sets nanoswarm on default spot and far side." }
+    ],
+    roles: [
+      { agent: "Raze",      desc: "Satchel entry. Grenades corners on site." },
+      { agent: "Skye",      desc: "Trailblazer into site, then 2 flashes for team entry." },
+      { agent: "Brimstone", desc: "Smoke B main and Market window. Stay with team." },
+      { agent: "Omen",      desc: "Smoke back-site CT angle. Can teleport post-plant." },
+      { agent: "Killjoy",   desc: "Plant and lock down with nanoswarm + turret." }
+    ],
+    notes: "<strong>Speed is the strat.</strong> Do not hesitate at B main. If you get caught lurking or split, the rush loses its power. Call abort if defender is spotted pushing aggressively out of Market."
+  },
+  {
+    id: 3,
+    title: "A Retake",
+    map: "Ascent",
+    side: "def",
+    tags: ["ascent", "def"],
+    agents: ["Killjoy", "Sage", "Sova", "Jett", "Brimstone"],
+    difficulty: 3,
+    desc: "Coordinated A site retake from CT and Market. KJ ult used if needed to stop post-plant.",
+    images: [
+      { url: "https://placehold.co/800x450/111318/60b8ff?text=Retake+Positions", label: "Retake Entry Points" }
+    ],
+    steps: [
+      { text: "<strong>Killjoy</strong> activates lockdown from CT if alive — forces enemies off plant spot." },
+      { text: "<strong>Sova</strong> darts through A site from Market to reveal post-plant positions." },
+      { text: "<strong>Brimstone</strong> smokes Generator and Catwalk to cut off escape routes." },
+      { text: "<strong>Jett</strong> and <strong>Sage</strong> push in from CT while bomb is revealed." },
+      { text: "Prioritise the defuse — trade if needed, don't over-peek." }
+    ],
+    roles: [
+      { agent: "Killjoy",   desc: "Save lockdown for retake if lost site. Entry from CT." },
+      { agent: "Sage",      desc: "Slow orb on site, heal team, enter with Jett." },
+      { agent: "Sova",      desc: "Reveal post-plant via Market. Do not rush in." },
+      { agent: "Jett",      desc: "Primary retaker. Dash in on KJ lockdown." },
+      { agent: "Brimstone", desc: "Smoke off rotations, then push with team." }
+    ],
+    notes: "<strong>Never retake solo.</strong> Wait for at least 2 teammates before committing. If Killjoy ult is available it should be used — it forces enemies off the bomb and reveals positions. Call bomb timer at :20 and :10."
+  },
+  {
+    id: 4,
+    title: "C Split",
+    map: "Haven",
+    side: "atk",
+    tags: ["haven", "atk"],
+    agents: ["Reyna", "Viper", "Breach", "Fade", "Cypher"],
+    difficulty: 2,
+    desc: "Split pressure on C long and C link simultaneously. Viper wall cuts off CT rotation.",
+    images: [
+      { url: "https://placehold.co/800x450/111318/ff4655?text=C+Split+Setup", label: "C Site Split" }
+    ],
+    steps: [
+      { text: "<strong>Fade</strong> seizes through C long to reveal defenders early." },
+      { text: "<strong>Breach</strong> stuns and faults C link corner simultaneously." },
+      { text: "<strong>Viper</strong> throws vertical wall to cut CT — blocks mid rotation." },
+      { text: "<strong>Reyna</strong> pushes C long aggressively under Fade reveal." },
+      { text: "<strong>Cypher</strong> cages C link entrance, plants, then sets trip for post-plant." }
+    ],
+    roles: [
+      { agent: "Reyna",  desc: "Entry C long under Fade reveals. Dismiss on trade." },
+      { agent: "Viper",  desc: "Wall blocks CT rotation. Can reposition wall post-plant." },
+      { agent: "Breach", desc: "Stun C link corner, follow entry from link side." },
+      { agent: "Fade",   desc: "Seize down C long pre-contact, then trail." },
+      { agent: "Cypher", desc: "Cage link entry, plant, tripwire for post-plant." }
+    ],
+    notes: "<strong>Viper wall timing is critical.</strong> Wall must land before Reyna peeks C long. If Fade seize catches 2+ defenders deep C, consider full C long rush instead of split."
+  }
+];
+
+// ─────────────────────────────────────────────
+//  RENDER LOGIC
+// ─────────────────────────────────────────────
+let activeFilter = "all";
+
+function pips(n, max = 3) {
+  return Array.from({ length: max }, (_, i) =>
+    `<div class="pip ${i < n ? 'filled' : ''}"></div>`
+  ).join('');
+}
+
+function tagClass(side) {
+  return side === 'atk' ? 'tag-atk' : side === 'def' ? 'tag-def' : 'tag-mid';
+}
+function tagLabel(side) {
+  return side === 'atk' ? 'ATK' : side === 'DEF' ? 'DEF' : side.toUpperCase();
+}
+
+function renderGrid(filter) {
+  const grid = document.getElementById('strat-grid');
+  const filtered = filter === 'all'
+    ? STRATS
+    : STRATS.filter(s => s.tags.includes(filter));
+
+  grid.innerHTML = filtered.map(s => `
+    <div class="strat-card" data-id="${s.id}">
+      <div class="card-header">
+        <div>
+          <div class="card-title">${s.title}</div>
+          <div class="card-map">${s.map.toUpperCase()}</div>
+        </div>
+        <div class="tag ${tagClass(s.side)}">${tagLabel(s.side)}</div>
+      </div>
+      <div class="card-body">
+        <p class="card-desc">${s.desc}</p>
+        <div class="agents-row">
+          ${s.agents.map(a => `<div class="agent-pill">${a}</div>`).join('')}
+        </div>
+      </div>
+      <div class="card-footer">
+        <button class="view-btn">
+          VIEW STRAT
+          <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <div class="difficulty">${pips(s.difficulty)}</div>
+      </div>
+    </div>
+  `).join('');
+
+  document.getElementById('strat-count').textContent = STRATS.length;
+
+  grid.querySelectorAll('.strat-card').forEach(card => {
+    card.addEventListener('click', () => openModal(parseInt(card.dataset.id)));
+  });
+}
+
+// ── MODAL ──
+function openModal(id) {
+  const s = STRATS.find(x => x.id === id);
+  if (!s) return;
+
+  document.getElementById('modal-title').textContent = s.title;
+  document.getElementById('modal-map').textContent =
+    `${s.map.toUpperCase()} · ${tagLabel(s.side)} · ${['','EASY','MEDIUM','HARD'][s.difficulty]}`;
+
+  const imgCount = s.images.length;
+  const imgClass = imgCount === 1 ? 'one' : imgCount === 2 ? 'two' : 'three';
+
+  document.getElementById('modal-body').innerHTML = `
+    <div class="strat-images ${imgClass}">
+      ${s.images.map(img => `
+        <div class="strat-img-wrap">
+          <img src="${img.url}" alt="${img.label}" loading="lazy" />
+          <div class="img-label">${img.label}</div>
+        </div>
+      `).join('')}
+    </div>
+
+    <div class="steps-title">// EXECUTION STEPS</div>
+    <div class="steps">
+      ${s.steps.map((step, i) => `
+        <div class="step">
+          <div class="step-num">${String(i + 1).padStart(2, '0')}</div>
+          <div class="step-text">${step.text}</div>
+        </div>
+      `).join('')}
+    </div>
+
+    <div class="steps-title">// AGENT ROLES</div>
+    <div class="roles-grid">
+      ${s.roles.map(r => `
+        <div class="role-card">
+          <div class="role-agent">${r.agent}</div>
+          <div class="role-desc">${r.desc}</div>
+        </div>
+      `).join('')}
+    </div>
+
+    <div class="steps-title">// COACH NOTES</div>
+    <div class="notes-box"><p>${s.notes}</p></div>
+  `;
+
+  document.getElementById('modal-overlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+// ── EVENTS ──
+document.getElementById('modal-close').addEventListener('click', closeModal);
+document.getElementById('modal-overlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('modal-overlay')) closeModal();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+document.getElementById('filters').addEventListener('click', e => {
+  const btn = e.target.closest('.filter-btn');
+  if (!btn) return;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  activeFilter = btn.dataset.filter;
+  renderGrid(activeFilter);
+});
+
+// ── INIT ──
+renderGrid('all');
+</script>
+</body>
+</html>
