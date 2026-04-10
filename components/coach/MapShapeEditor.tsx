@@ -26,7 +26,7 @@ import {
   alignPointsHorizontal,
   alignPointsVertical,
   flipPointsOverHorizontalMidline,
-  flipPointsOverVerticalMidline,
+  flipPointsThroughViewBoxCenter,
   ringsToPathD,
   type MapPoint,
 } from "@/lib/map-path";
@@ -68,6 +68,7 @@ import {
   Eye,
   EyeOff,
   FlipHorizontal2,
+  FlipVertical2,
   ImagePlus,
   Loader2,
   MapPin,
@@ -1644,9 +1645,9 @@ export function MapShapeEditor({
     setBanner(null);
     const rect = vbRef.current;
     const { outer, holes } = outlineRingsRef.current;
-    const nextOuter = flipPointsOverVerticalMidline(rect, outer);
+    const nextOuter = flipPointsThroughViewBoxCenter(rect, outer);
     const nextHoles = holes.map((h) =>
-      flipPointsOverVerticalMidline(rect, h),
+      flipPointsThroughViewBoxCenter(rect, h),
     );
     setOutlineOuter(nextOuter);
     setOutlineHoles(nextHoles);
@@ -1657,7 +1658,7 @@ export function MapShapeEditor({
             ? ((s.gradeHighSide ?? 1) === 1 ? (-1 as const) : (1 as const))
             : undefined;
         if (s.circle && s.circle.r > 0) {
-          const q = flipPointsOverVerticalMidline(rect, [
+          const q = flipPointsThroughViewBoxCenter(rect, [
             { x: s.circle.cx, y: s.circle.cy },
           ])[0]!;
           let nc = { cx: q.x, cy: q.y, r: s.circle.r };
@@ -1675,7 +1676,7 @@ export function MapShapeEditor({
         return {
           ...s,
           points: clampPointsToOutline(
-            flipPointsOverVerticalMidline(rect, s.points),
+            flipPointsThroughViewBoxCenter(rect, s.points),
             nextOuter,
             nextHoles,
           ),
@@ -1687,7 +1688,7 @@ export function MapShapeEditor({
     );
     setEditorMeta((em) => {
       const flip = (p: MapPoint) =>
-        flipPointsOverVerticalMidline(rect, [p])[0] ?? p;
+        flipPointsThroughViewBoxCenter(rect, [p])[0] ?? p;
       return {
         ...em,
         spawn_markers: em.spawn_markers.map((s) => {
@@ -1701,13 +1702,20 @@ export function MapShapeEditor({
               ? "right"
               : l.text_anchor === "right"
                 ? "left"
-                : l.text_anchor;
+                : l.text_anchor === "top"
+                  ? "bottom"
+                  : l.text_anchor === "bottom"
+                    ? "top"
+                    : l.text_anchor;
+          let rot = l.text_rotation_deg + 180;
+          if (rot > 180) rot -= 360;
+          if (rot < -180) rot += 360;
           return {
             ...l,
             x: q.x,
             y: q.y,
             text_anchor,
-            text_rotation_deg: -l.text_rotation_deg,
+            text_rotation_deg: rot,
           };
         }),
       };
@@ -1976,9 +1984,12 @@ export function MapShapeEditor({
                   onClick={swapAttackDefenseSides}
                   disabled={outlineOuter.length < 1}
                   className="btn-secondary inline-flex shrink-0 items-center gap-1 px-2 py-1 disabled:opacity-40"
-                  title="Flip stored attack outline and overlays left–right (use if the reference image is mirrored or sites are reversed east–west)"
+                  title="Flip stored attack outline and overlays through the map center (mirror horizontally and vertically)"
                 >
-                  <FlipHorizontal2 className="h-3.5 w-3.5" />
+                  <span className="inline-flex items-center gap-px">
+                    <FlipHorizontal2 className="h-3 w-3" />
+                    <FlipVertical2 className="h-3 w-3" />
+                  </span>
                   Swap sides
                 </button>
                 <span className="shrink-0 whitespace-nowrap text-violet-300/40">

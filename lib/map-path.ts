@@ -96,6 +96,19 @@ export function flipPointsOverVerticalMidline(
   return points.map((p) => ({ x: 2 * midX - p.x, y: p.y }));
 }
 
+/**
+ * Reflect points through the center of the viewBox (flip over both axes:
+ * same as vertical then horizontal mirror, or 180° rotation about the center).
+ */
+export function flipPointsThroughViewBoxCenter(
+  vb: ViewBoxRect,
+  points: MapPoint[],
+): MapPoint[] {
+  const midX = vb.minX + vb.width / 2;
+  const midY = vb.minY + vb.height / 2;
+  return points.map((p) => ({ x: 2 * midX - p.x, y: 2 * midY - p.y }));
+}
+
 /** Align selected vertices to the same x (vertical axis / column). */
 export function alignPointsVertical(
   points: MapPoint[],
