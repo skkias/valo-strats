@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Strat, StratImage, StratRole, StratSide } from "@/types/strat";
+import type { Agent, GameMap } from "@/types/catalog";
 import {
   Loader2,
   Trash2,
@@ -9,7 +10,9 @@ import {
   Plus,
   Upload,
   Lock,
+  Map as MapIcon,
 } from "lucide-react";
+import Link from "next/link";
 import { lockCoach } from "@/app/coach/actions";
 import {
   createStratAction,
@@ -18,6 +21,14 @@ import {
   updateStratAction,
   uploadStratImageAction,
 } from "@/app/coach/strat-actions";
+
+const EMPTY_SLOTS: [string, string, string, string, string] = [
+  "",
+  "",
+  "",
+  "",
+  "",
+];
 
 function parseRoles(text: string): StratRole[] {
   return text.split("\n").reduce<StratRole[]>((acc, line) => {
@@ -47,9 +58,9 @@ function parseRoles(text: string): StratRole[] {
 function emptyForm() {
   return {
     title: "",
-    map: "",
+    map_id: "",
     side: "atk" as StratSide,
-    agents: "",
+    agentSlots: [...EMPTY_SLOTS] as [string, string, string, string, string],
     difficulty: "2",
     description: "",
     steps: "",
@@ -60,13 +71,37 @@ function emptyForm() {
   };
 }
 
-export function CoachDashboard() {
+function resolveMapId(s: Strat, maps: GameMap[]): string {
+  if (s.map_id) return s.map_id;
+  const t = s.map.trim().toLowerCase();
+  return maps.find((m) => m.name === s.map || m.slug === t)?.id ?? "";
+}
+
+function slotsFromStratAgents(
+  agents: string[],
+): [string, string, string, string, string] {
+  const out = [...EMPTY_SLOTS] as [string, string, string, string, string];
+  for (let i = 0; i < 5; i++) out[i] = agents[i] ?? "";
+  return out;
+}
+
+export function CoachDashboard({
+  initialAgents,
+  initialMaps,
+  catalogError,
+}: {
+  initialAgents: Agent[];
+  initialMaps: GameMap[];
+  catalogError: string | null;
+}) {
   const [strats, setStrats] = useState<Strat[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
+  /** Row index that receives pasted images (Ctrl+V). */
+  const [pasteTargetRow, setPasteTargetRow] = useState(0);
 
   const loadStrats = useCallback(async () => {
     setListLoading(true);
@@ -86,13 +121,75 @@ export function CoachDashboard() {
     });
   }, [loadStrats]);
 
+  useEffect(() => {
+    queueMicrotask(() => {
+      setPasteTargetRow((i) =>
+        Math.min(i, Math.max(0, form.images.length - 1)),
+      );
+    });
+  }, [form.images.length]);
+
+  const uploadImageFile = useCallback(async (file: Blob, imageIndex: number) => {
+    setBanner(null);
+    const name =
+      file instanceof File && file.name
+        ? file.name
+        : `paste-${Date.now()}.png`;
+    const fd = new FormData();
+    fd.set(
+      "file",
+      file instanceof File
+        ? file
+        : new File([file], name, { type: file.type || "image/png" }),
+    );
+    const res = await uploadStratImageAction(fd);
+    if (res.error) {
+      setBanner(res.error);
+      return;
+    }
+    if (res.url) {
+      setForm((f) => {
+        const images = [...f.images];
+        images[imageIndex] = { ...images[imageIndex], url: res.url! };
+        return { ...f, images };
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const dt = e.clipboardData;
+      if (!dt) return;
+      let blob: Blob | null = null;
+      const items = dt.items;
+      if (items?.length) {
+        for (let i = 0; i < items.length; i++) {
+          const it = items[i];
+          if (it?.kind === "file" && it.type.startsWith("image/")) {
+            blob = it.getAsFile();
+            break;
+          }
+        }
+      }
+      if (!blob && dt.files?.length) {
+        const f = dt.files[0];
+        if (f?.type.startsWith("image/")) blob = f;
+      }
+      if (!blob) return;
+      e.preventDefault();
+      void uploadImageFile(blob, pasteTargetRow);
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [pasteTargetRow, uploadImageFile]);
+
   function startEdit(s: Strat) {
     setEditingId(s.id);
     setForm({
       title: s.title,
-      map: s.map,
+      map_id: resolveMapId(s, initialMaps),
       side: s.side,
-      agents: s.agents.join(", "),
+      agentSlots: slotsFromStratAgents(s.agents),
       difficulty: String(s.difficulty),
       description: s.description,
       steps: s.steps.map((x) => x.text).join("\n"),
@@ -113,10 +210,7 @@ export function CoachDashboard() {
   }
 
   function buildPayload(): Omit<Strat, "id" | "created_at"> {
-    const agents = form.agents
-      .split(",")
-      .map((a) => a.trim())
-      .filter(Boolean);
+    const agents = form.agentSlots.map((x) => x.trim()).filter(Boolean);
     const tags = form.tags
       .split(",")
       .map((t) => t.trim())
@@ -134,9 +228,13 @@ export function CoachDashboard() {
         label: i.label?.trim() || undefined,
       }));
 
+    const mapName =
+      initialMaps.find((m) => m.id === form.map_id)?.name ?? "";
+
     return {
       title: form.title.trim(),
-      map: form.map.trim(),
+      map: mapName,
+      map_id: form.map_id || null,
       side: form.side,
       agents,
       difficulty: Math.min(3, Math.max(1, Number(form.difficulty) || 2)),
@@ -192,34 +290,30 @@ export function CoachDashboard() {
     imageIndex: number,
   ) {
     const file = e.target.files?.[0];
-    if (!file) return;
-    setBanner(null);
-    const fd = new FormData();
-    fd.set("file", file);
-    const res = await uploadStratImageAction(fd);
-    if (res.error) {
-      setBanner(res.error);
-      e.target.value = "";
-      return;
-    }
-    if (res.url) {
-      setForm((f) => {
-        const images = [...f.images];
-        images[imageIndex] = { ...images[imageIndex], url: res.url! };
-        return { ...f, images };
-      });
-    }
     e.target.value = "";
+    if (!file) return;
+    await uploadImageFile(file, imageIndex);
   }
+
+  const catalogReady =
+    !catalogError && initialAgents.length > 0 && initialMaps.length > 0;
 
   return (
     <div className="space-y-10">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <p className="text-sm text-violet-200/65">
-          Signed in with the <span className="text-slate-100">coach password</span>
-          . Strats update the public browse page after each save.
+          Signed in with the{" "}
+          <span className="text-slate-100">coach password</span>. Strats update
+          the public browse page after each save.
         </p>
         <div className="flex flex-wrap gap-2">
+          <Link
+            href="/coach/maps"
+            className="btn-secondary inline-flex items-center gap-2"
+          >
+            <MapIcon className="h-4 w-4" />
+            Map shapes
+          </Link>
           <button
             type="button"
             onClick={() => void loadStrats()}
@@ -243,6 +337,22 @@ export function CoachDashboard() {
         </div>
       </div>
 
+      {catalogError && (
+        <p
+          className="rounded-lg border border-fuchsia-900/50 bg-fuchsia-950/30 px-4 py-3 text-sm text-fuchsia-200"
+          role="alert"
+        >
+          {catalogError}{" "}
+          <span className="text-fuchsia-300/80">
+            Run the SQL in{" "}
+            <code className="rounded bg-black/30 px-1">
+              supabase/migrations/20260410120000_agents_maps.sql
+            </code>{" "}
+            in the Supabase SQL editor, then refresh.
+          </span>
+        </p>
+      )}
+
       {banner && (
         <p
           className="rounded-lg border border-violet-800/40 bg-slate-950/60 px-4 py-3 text-sm text-slate-200"
@@ -256,7 +366,16 @@ export function CoachDashboard() {
         <h2 className="text-lg font-semibold text-white">
           {editingId ? "Edit strat" : "New strat"}
         </h2>
-        <form onSubmit={(e) => void handleSubmit(e)} className="mt-6 space-y-4">
+        {!catalogReady && !catalogError ? (
+          <p className="mt-4 text-sm text-amber-200/80">
+            Add agents and maps in Supabase (see migration). Until the catalog has
+            rows, you cannot save strats with the new picker.
+          </p>
+        ) : null}
+        <form
+          onSubmit={(e) => void handleSubmit(e)}
+          className="mt-6 space-y-4"
+        >
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <label className="label" htmlFor="title">
@@ -272,18 +391,34 @@ export function CoachDashboard() {
                 required
               />
             </div>
-            <div>
-              <label className="label" htmlFor="map">
+            <div className="sm:col-span-2">
+              <label className="label" htmlFor="map_id">
                 Map
               </label>
-              <input
-                id="map"
-                value={form.map}
-                onChange={(e) => setForm((f) => ({ ...f, map: e.target.value }))}
+              <select
+                id="map_id"
+                value={form.map_id}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, map_id: e.target.value }))
+                }
                 className="input-field mt-1"
-                placeholder="Ascent"
-                required
-              />
+                required={catalogReady}
+                disabled={!catalogReady}
+              >
+                <option value="">— Select map —</option>
+                {initialMaps.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-violet-400/45">
+                Configure reference art and outlines under{" "}
+                <Link href="/coach/maps" className="text-violet-300 underline">
+                  Map shapes
+                </Link>
+                .
+              </p>
             </div>
             <div>
               <label className="label" htmlFor="side">
@@ -321,19 +456,45 @@ export function CoachDashboard() {
                 required
               />
             </div>
-            <div>
-              <label className="label" htmlFor="agents">
-                Agents (comma-separated)
-              </label>
-              <input
-                id="agents"
-                value={form.agents}
-                onChange={(e) =>
-                  setForm((f) => ({ ...f, agents: e.target.value }))
-                }
-                className="input-field mt-1"
-                placeholder="Jett, Sova, …"
-              />
+            <div className="sm:col-span-2">
+              <span className="label">Team comp (5 agents)</span>
+              <p className="mt-1 text-xs text-violet-400/45">
+                Slugs match the catalog — used later for ability-based visuals.
+              </p>
+              <div className="mt-2 grid gap-2 sm:grid-cols-5">
+                {([0, 1, 2, 3, 4] as const).map((i) => (
+                  <div key={i}>
+                    <label className="sr-only" htmlFor={`agent-${i}`}>
+                      Agent {i + 1}
+                    </label>
+                    <select
+                      id={`agent-${i}`}
+                      value={form.agentSlots[i]}
+                      onChange={(e) => {
+                        const next = [...form.agentSlots] as [
+                          string,
+                          string,
+                          string,
+                          string,
+                          string,
+                        ];
+                        next[i] = e.target.value;
+                        setForm((f) => ({ ...f, agentSlots: next }));
+                      }}
+                      className="input-field mt-0"
+                      required={catalogReady}
+                      disabled={!catalogReady}
+                    >
+                      <option value="">—</option>
+                      {initialAgents.map((a) => (
+                        <option key={a.slug} value={a.slug}>
+                          {a.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
             </div>
             <div className="sm:col-span-2">
               <label className="label" htmlFor="description">
@@ -408,11 +569,24 @@ export function CoachDashboard() {
           </div>
 
           <div className="space-y-3">
-            <span className="label">Images (ValoPlant URLs or upload)</span>
+            <div>
+              <span className="label">Images (URL, upload, or paste)</span>
+              <p className="mt-1 text-xs text-violet-400/50">
+                Click a row to select it, then paste an image (Ctrl+V or
+                Cmd+V). Upload still works per row.
+              </p>
+            </div>
             {form.images.map((img, idx) => (
               <div
                 key={idx}
-                className="flex flex-col gap-2 rounded-lg border border-violet-800/35 p-3 sm:flex-row sm:items-end"
+                role="group"
+                aria-label={`Image row ${idx + 1}${pasteTargetRow === idx ? ", clipboard target" : ""}`}
+                onClick={() => setPasteTargetRow(idx)}
+                className={`flex cursor-pointer flex-col gap-2 rounded-lg border p-3 transition sm:flex-row sm:items-end ${
+                  pasteTargetRow === idx
+                    ? "border-violet-500/55 ring-2 ring-violet-500/25"
+                    : "border-violet-800/35 hover:border-violet-700/45"
+                }`}
               >
                 <div className="min-w-0 flex-1">
                   <label
@@ -496,7 +670,11 @@ export function CoachDashboard() {
           </div>
 
           <div className="flex flex-wrap gap-3 pt-2">
-            <button type="submit" disabled={saving} className="btn-primary">
+            <button
+              type="submit"
+              disabled={saving || !catalogReady}
+              className="btn-primary"
+            >
               {saving ? (
                 <Loader2 className="mr-2 inline h-4 w-4 animate-spin" />
               ) : null}

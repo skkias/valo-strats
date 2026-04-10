@@ -19,7 +19,10 @@ export interface Strat {
   id: string;
   created_at: string;
   title: string;
+  /** Denormalized display name; keep in sync with `maps.name` when `map_id` is set. */
   map: string;
+  /** FK to `public.maps` for layout / vector data; optional for legacy rows. */
+  map_id: string | null;
   side: StratSide;
   agents: string[];
   difficulty: number;

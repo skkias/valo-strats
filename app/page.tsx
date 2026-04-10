@@ -1,5 +1,7 @@
 import { createServerSupabaseClient } from "@/lib/supabase-server";
+import { listAgents } from "@/lib/catalog-queries";
 import { StratGrid } from "@/components/StratGrid";
+import { normalizeStratRow } from "@/lib/strat-normalize";
 import type { Strat } from "@/types/strat";
 
 export default async function Home() {
@@ -30,6 +32,7 @@ export default async function Home() {
 
   let strats: Strat[] = [];
   let errorMessage: string | null = null;
+  let agentNames: Record<string, string> = {};
 
   try {
     const supabase = await createServerSupabaseClient();
@@ -39,7 +42,16 @@ export default async function Home() {
       .order("created_at", { ascending: false });
 
     if (error) errorMessage = error.message;
-    else strats = (data ?? []) as Strat[];
+    else
+      strats = (data ?? []).map((r) =>
+        normalizeStratRow(r as Strat & { map_id?: string | null }),
+      );
+    try {
+      const agents = await listAgents();
+      agentNames = Object.fromEntries(agents.map((a) => [a.slug, a.name]));
+    } catch {
+      agentNames = {};
+    }
   } catch (e) {
     errorMessage = e instanceof Error ? e.message : "Failed to connect to Supabase.";
   }
@@ -67,7 +79,7 @@ export default async function Home() {
           </p>
         </div>
       </div>
-      <StratGrid initialStrats={strats} />
+      <StratGrid initialStrats={strats} agentNamesBySlug={agentNames} />
     </main>
   );
 }

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { assertCoachGate } from "@/lib/coach-gate-server";
 import { createServiceSupabaseClient } from "@/lib/supabase-service";
 import type { Strat } from "@/types/strat";
+import { normalizeStratRow } from "@/lib/strat-normalize";
 
 export async function listStratsForCoach(): Promise<{
   data: Strat[] | null;
@@ -17,7 +18,10 @@ export async function listStratsForCoach(): Promise<{
       .select("*")
       .order("created_at", { ascending: false });
     if (error) return { data: null, error: error.message };
-    return { data: (data ?? []) as Strat[], error: null };
+    const rows = (data ?? []).map((r) =>
+      normalizeStratRow(r as Strat & { map_id?: string | null }),
+    );
+    return { data: rows, error: null };
   } catch (e) {
     return {
       data: null,
@@ -28,14 +32,59 @@ export async function listStratsForCoach(): Promise<{
 
 type StratPayload = Omit<Strat, "id" | "created_at">;
 
+async function prepareStratRow(
+  supabase: ReturnType<typeof createServiceSupabaseClient>,
+  payload: StratPayload,
+): Promise<{ row: StratPayload; error: string | null }> {
+  const agents = payload.agents ?? [];
+  if (agents.length !== 5) {
+    return { row: payload, error: "Select exactly five agents." };
+  }
+  if (new Set(agents).size !== 5) {
+    return { row: payload, error: "Agents must all be different." };
+  }
+  const { data: agentRows, error: agentErr } = await supabase
+    .from("agents")
+    .select("slug")
+    .in("slug", agents);
+  if (agentErr) return { row: payload, error: agentErr.message };
+  if (!agentRows || agentRows.length !== 5) {
+    return { row: payload, error: "One or more agent slugs are invalid." };
+  }
+
+  const mapId = payload.map_id;
+  if (!mapId) {
+    return { row: payload, error: "Choose a map from the list." };
+  }
+  const { data: mapRow, error: mapErr } = await supabase
+    .from("maps")
+    .select("name")
+    .eq("id", mapId)
+    .maybeSingle();
+  if (mapErr) return { row: payload, error: mapErr.message };
+  if (!mapRow?.name) {
+    return { row: payload, error: "Selected map was not found." };
+  }
+
+  const row: StratPayload = {
+    ...payload,
+    map: mapRow.name,
+    map_id: mapId,
+    agents,
+  };
+  return { row, error: null };
+}
+
 export async function createStratAction(
   payload: StratPayload,
 ): Promise<{ error: string | null }> {
   try {
     await assertCoachGate();
     const supabase = createServiceSupabaseClient();
-    const { error } = await supabase.from("strats").insert(payload);
-    if (error) return { error: error.message };
+    const { row, error } = await prepareStratRow(supabase, payload);
+    if (error) return { error };
+    const { error: ins } = await supabase.from("strats").insert(row);
+    if (ins) return { error: ins.message };
     revalidatePath("/");
     return { error: null };
   } catch (e) {
@@ -52,8 +101,10 @@ export async function updateStratAction(
   try {
     await assertCoachGate();
     const supabase = createServiceSupabaseClient();
-    const { error } = await supabase.from("strats").update(payload).eq("id", id);
-    if (error) return { error: error.message };
+    const { row, error } = await prepareStratRow(supabase, payload);
+    if (error) return { error };
+    const { error: up } = await supabase.from("strats").update(row).eq("id", id);
+    if (up) return { error: up.message };
     revalidatePath("/");
     return { error: null };
   } catch (e) {

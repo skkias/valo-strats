@@ -16,11 +16,17 @@ function DifficultyDots({ value }: { value: number }) {
   );
 }
 
+function displayAgent(slug: string, names: Record<string, string>) {
+  return names[slug] ?? slug;
+}
+
 export function StratCard({
   strat,
+  agentNamesBySlug = {},
   onOpen,
 }: {
   strat: Strat;
+  agentNamesBySlug?: Record<string, string>;
   onOpen: (s: Strat) => void;
 }) {
   const excerpt =
@@ -70,7 +76,7 @@ export function StratCard({
               key={a}
               className="rounded-md border border-violet-800/40 bg-violet-950/40 px-2 py-0.5 text-xs text-violet-200/90"
             >
-              {a}
+              {displayAgent(a, agentNamesBySlug)}
             </span>
           ))}
           {strat.agents.length > 6 && (

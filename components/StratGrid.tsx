@@ -4,22 +4,18 @@ import { useMemo, useState } from "react";
 import type { Strat, StratSide } from "@/types/strat";
 import { StratCard } from "@/components/StratCard";
 import { StratModal } from "@/components/StratModal";
+import { normalizeStratRow } from "@/lib/strat-normalize";
 import { Search } from "lucide-react";
 
-function normalizeStrat(raw: Strat): Strat {
-  return {
-    ...raw,
-    agents: Array.isArray(raw.agents) ? raw.agents : [],
-    steps: Array.isArray(raw.steps) ? raw.steps : [],
-    roles: Array.isArray(raw.roles) ? raw.roles : [],
-    images: Array.isArray(raw.images) ? raw.images : [],
-    tags: Array.isArray(raw.tags) ? raw.tags : [],
-  };
-}
-
-export function StratGrid({ initialStrats }: { initialStrats: Strat[] }) {
+export function StratGrid({
+  initialStrats,
+  agentNamesBySlug = {},
+}: {
+  initialStrats: Strat[];
+  agentNamesBySlug?: Record<string, string>;
+}) {
   const strats = useMemo(
-    () => initialStrats.map(normalizeStrat),
+    () => initialStrats.map(normalizeStratRow),
     [initialStrats],
   );
 
@@ -121,7 +117,11 @@ export function StratGrid({ initialStrats }: { initialStrats: Strat[] }) {
           <ul className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((s) => (
               <li key={s.id}>
-                <StratCard strat={s} onOpen={setSelected} />
+                <StratCard
+                  strat={s}
+                  agentNamesBySlug={agentNamesBySlug}
+                  onOpen={setSelected}
+                />
               </li>
             ))}
           </ul>
