@@ -8,6 +8,11 @@ export interface Agent {
   name: string;
   role: string;
   sort_order: number;
+  /**
+   * Optional HTTPS URL to a square portrait (“face card”) for UI.
+   * Set manually under Coach → Agents (not bundled with the app).
+   */
+  portrait_url?: string | null;
   /** Coach-drawn ability shapes (lineup-style); optional until migration applied. */
   abilities_blueprint?: AgentAbilityBlueprint[];
 }

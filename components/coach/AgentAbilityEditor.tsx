@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Save, Trash2 } from "lucide-react";
 import type { Agent } from "@/types/catalog";
 import type {
@@ -9,7 +9,10 @@ import type {
   AgentAbilityShapeKind,
   AgentAbilitySlot,
 } from "@/types/agent-ability";
-import { saveAgentAbilitiesBlueprintAction } from "@/app/coach/agent-actions";
+import {
+  saveAgentAbilitiesBlueprintAction,
+  saveAgentPortraitUrlAction,
+} from "@/app/coach/agent-actions";
 import type { MapPoint } from "@/lib/map-path";
 import { clientToSvgPoint } from "@/lib/svg-coords";
 
@@ -314,6 +317,12 @@ export function AgentAbilityEditor({ agent }: { agent: Agent }) {
   const [placement, setPlacement] = useState<Placement | null>(null);
   const [saving, setSaving] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
+  const [portraitUrl, setPortraitUrl] = useState(agent.portrait_url ?? "");
+  const [portraitSaving, setPortraitSaving] = useState(false);
+
+  useEffect(() => {
+    setPortraitUrl(agent.portrait_url ?? "");
+  }, [agent.id, agent.portrait_url]);
 
   const [draftSlot, setDraftSlot] = useState<AgentAbilitySlot>("q");
   const [draftName, setDraftName] = useState("");
@@ -411,6 +420,35 @@ export function AgentAbilityEditor({ agent }: { agent: Agent }) {
     else setBanner("Saved ability blueprints.");
   }
 
+  async function onSavePortrait() {
+    setPortraitSaving(true);
+    setBanner(null);
+    const { error } = await saveAgentPortraitUrlAction(
+      agent.id,
+      portraitUrl.trim() || null,
+      agent.slug,
+    );
+    setPortraitSaving(false);
+    if (error) setBanner(error);
+    else setBanner("Saved portrait URL.");
+  }
+
+  async function onClearPortrait() {
+    setPortraitSaving(true);
+    setBanner(null);
+    const { error } = await saveAgentPortraitUrlAction(
+      agent.id,
+      null,
+      agent.slug,
+    );
+    setPortraitSaving(false);
+    if (error) setBanner(error);
+    else {
+      setPortraitUrl("");
+      setBanner("Cleared portrait URL.");
+    }
+  }
+
   return (
     <div className="space-y-6">
       {banner && (
@@ -418,6 +456,73 @@ export function AgentAbilityEditor({ agent }: { agent: Agent }) {
           {banner}
         </p>
       )}
+
+      <div className="rounded-xl border border-fuchsia-900/35 bg-slate-950/50 p-4">
+        <h2 className="text-sm font-semibold text-fuchsia-100/95">
+          Face card (portrait)
+        </h2>
+        <p className="mt-2 text-xs leading-relaxed text-violet-300/65">
+          This app does not ship agent artwork. Add a public{" "}
+          <strong className="text-violet-200/90">https://</strong> URL to a
+          square image you are allowed to host—e.g. your own renders, team
+          graphics, or assets from Riot&apos;s official VALORANT{" "}
+          <span className="whitespace-nowrap">press / media kit</span> (follow
+          their license). You can also upload to Supabase Storage or another CDN
+          and paste the link here.
+        </p>
+        <label className="label mt-3 block" htmlFor="agent-portrait-url">
+          Portrait image URL
+        </label>
+        <div className="mt-1 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <input
+            id="agent-portrait-url"
+            type="url"
+            inputMode="url"
+            autoComplete="off"
+            placeholder="https://…"
+            value={portraitUrl}
+            onChange={(e) => setPortraitUrl(e.target.value)}
+            className="input-field min-w-0 flex-1 font-mono text-xs"
+          />
+          <div className="flex shrink-0 gap-2">
+            <button
+              type="button"
+              onClick={() => void onSavePortrait()}
+              disabled={portraitSaving}
+              className="btn-primary whitespace-nowrap px-3 py-2 text-sm"
+            >
+              {portraitSaving ? (
+                <Loader2 className="inline h-4 w-4 animate-spin" />
+              ) : (
+                "Save portrait"
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => void onClearPortrait()}
+              disabled={portraitSaving}
+              className="btn-secondary whitespace-nowrap px-3 py-2 text-sm"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+        {portraitUrl.trim().startsWith("https://") ? (
+          <div className="mt-3 flex items-start gap-3">
+            <img
+              src={portraitUrl.trim()}
+              alt=""
+              className="h-16 w-16 shrink-0 rounded-lg border border-violet-700/40 object-cover"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+            />
+            <p className="text-[11px] text-violet-400/55">
+              Preview only. If the image is blocked (hotlinking), try hosting on
+              your Supabase bucket or another CDN.
+            </p>
+          </div>
+        ) : null}
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-3">

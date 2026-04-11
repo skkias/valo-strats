@@ -265,6 +265,36 @@ export function CoachDashboard({
     setBanner(null);
   }, []);
 
+  const splitContainerRef = useRef<HTMLDivElement>(null);
+  const [splitPct, setSplitPct] = useState(50);
+  const splitDragRef = useRef<{ startX: number; startPct: number } | null>(
+    null,
+  );
+
+  const onSplitMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      splitDragRef.current = { startX: e.clientX, startPct: splitPct };
+      const onMove = (ev: MouseEvent) => {
+        const drag = splitDragRef.current;
+        const box = splitContainerRef.current?.getBoundingClientRect();
+        if (!drag || !box?.width) return;
+        const dx = ev.clientX - drag.startX;
+        const dPct = (dx / box.width) * 100;
+        const next = Math.max(28, Math.min(72, drag.startPct + dPct));
+        setSplitPct(next);
+      };
+      const onUp = () => {
+        splitDragRef.current = null;
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [splitPct],
+  );
+
   const initSelectionRef = useRef(false);
 
   useEffect(() => {
@@ -509,7 +539,7 @@ export function CoachDashboard({
         </aside>
 
         <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain">
-          <div className="mx-auto max-w-7xl space-y-6 p-4 pb-16 md:p-8">
+          <div className="w-full max-w-none space-y-6 px-4 pb-16 pt-4 md:px-6 lg:px-8">
       {catalogError && (
         <p
           className="rounded-lg border border-fuchsia-900/50 bg-fuchsia-950/30 px-4 py-3 text-sm text-fuchsia-200"
@@ -549,8 +579,16 @@ export function CoachDashboard({
           onSubmit={(e) => void handleSubmit(e)}
           className="mt-6 flex flex-col gap-6"
         >
-          <div className="flex flex-col gap-8 lg:grid lg:grid-cols-2 lg:items-start lg:gap-8">
-            <div className="min-w-0 space-y-4">
+          <div
+            ref={splitContainerRef}
+            className="flex w-full min-w-0 flex-col gap-8 lg:flex-row lg:items-stretch lg:gap-0"
+            style={
+              {
+                "--coach-split-pct": `${splitPct}%`,
+              } as React.CSSProperties
+            }
+          >
+            <div className="min-w-0 w-full space-y-4 lg:flex-[0_0_var(--coach-split-pct)]">
               <div className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <label className="label" htmlFor="title">
@@ -845,7 +883,15 @@ export function CoachDashboard({
               </div>
             </div>
 
-            <div className="min-w-0 lg:sticky lg:top-4 lg:max-h-[min(calc(100dvh-5rem),1100px)] lg:overflow-y-auto lg:overscroll-contain lg:rounded-xl lg:border lg:border-violet-800/35 lg:bg-slate-950/35 lg:p-4">
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize columns"
+              className="mx-0 hidden h-auto w-2 shrink-0 cursor-col-resize rounded-sm bg-violet-900/50 hover:bg-violet-500/45 active:bg-violet-400/50 lg:mx-1 lg:block"
+              onMouseDown={onSplitMouseDown}
+            />
+
+            <div className="min-w-0 w-full lg:sticky lg:top-4 lg:max-h-[min(calc(100dvh-5rem),1100px)] lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:rounded-xl lg:border lg:border-violet-800/35 lg:bg-slate-950/35 lg:p-4">
               {selectedStratMap ? (
                 <div className="space-y-3">
                   <div>

@@ -51,9 +51,27 @@ export default async function CoachAgentsPage() {
                   href={`/coach/agents/${a.slug}`}
                   className="flex items-center justify-between gap-3 px-4 py-3 transition hover:bg-violet-950/35"
                 >
-                  <div>
-                    <p className="font-medium text-slate-100">{a.name}</p>
-                    <p className="text-sm text-violet-400/65">{a.role}</p>
+                  <div className="flex min-w-0 items-center gap-3">
+                    {a.portrait_url?.trim().startsWith("https://") ? (
+                      <img
+                        src={a.portrait_url.trim()}
+                        alt=""
+                        className="h-10 w-10 shrink-0 rounded-lg border border-violet-800/40 object-cover"
+                        loading="lazy"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-dashed border-violet-800/50 bg-slate-950/50 text-[10px] text-violet-500/60"
+                        title="No portrait URL"
+                      >
+                        —
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="font-medium text-slate-100">{a.name}</p>
+                      <p className="text-sm text-violet-400/65">{a.role}</p>
+                    </div>
                   </div>
                   <ChevronRight className="h-5 w-5 shrink-0 text-violet-500/50" />
                 </Link>

@@ -23,10 +23,13 @@ function displayAgent(slug: string, names: Record<string, string>) {
 export function StratCard({
   strat,
   agentNamesBySlug = {},
+  agentPortraitsBySlug = {},
   onOpen,
 }: {
   strat: Strat;
   agentNamesBySlug?: Record<string, string>;
+  /** Optional face-card image URLs keyed by agent slug (from coach / DB). */
+  agentPortraitsBySlug?: Record<string, string>;
   onOpen: (s: Strat) => void;
 }) {
   const excerpt =
@@ -71,14 +74,28 @@ export function StratCard({
       <p className="text-sm leading-relaxed text-violet-200/70">{excerpt}</p>
       {strat.agents.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
-          {strat.agents.slice(0, 6).map((a) => (
-            <span
-              key={a}
-              className="rounded-md border border-violet-800/40 bg-violet-950/40 px-2 py-0.5 text-xs text-violet-200/90"
-            >
-              {displayAgent(a, agentNamesBySlug)}
-            </span>
-          ))}
+          {strat.agents.slice(0, 6).map((a) => {
+            const portrait = agentPortraitsBySlug[a];
+            return (
+              <span
+                key={a}
+                className="inline-flex items-center gap-1.5 rounded-md border border-violet-800/40 bg-violet-950/40 py-0.5 pl-0.5 pr-2 text-xs text-violet-200/90"
+              >
+                {portrait ? (
+                  <img
+                    src={portrait}
+                    alt=""
+                    className="h-6 w-6 shrink-0 rounded object-cover"
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : null}
+                <span className="pr-0.5">
+                  {displayAgent(a, agentNamesBySlug)}
+                </span>
+              </span>
+            );
+          })}
           {strat.agents.length > 6 && (
             <span className="text-xs text-violet-400/60">
               +{strat.agents.length - 6}

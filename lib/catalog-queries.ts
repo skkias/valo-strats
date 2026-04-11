@@ -9,7 +9,7 @@ export async function listAgents(): Promise<Agent[]> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("agents")
-    .select("id, slug, name, role, sort_order")
+    .select("id, slug, name, role, sort_order, portrait_url")
     .order("sort_order", { ascending: true });
   if (error) throw new Error(error.message);
   return (data ?? []) as Agent[];

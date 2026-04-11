@@ -32,3 +32,39 @@ export async function saveAgentAbilitiesBlueprintAction(
     };
   }
 }
+
+export async function saveAgentPortraitUrlAction(
+  agentId: string,
+  portraitUrl: string | null,
+  agentSlug?: string,
+): Promise<{ error: string | null }> {
+  try {
+    await assertCoachGate();
+    if (!agentId?.trim()) {
+      return { error: "Missing agent id." };
+    }
+    const trimmed = portraitUrl?.trim() ?? "";
+    if (trimmed && !/^https:\/\//i.test(trimmed)) {
+      return {
+        error: "Portrait URL must be empty or start with https://",
+      };
+    }
+    const supabase = createServiceSupabaseClient();
+    const { error } = await supabase
+      .from("agents")
+      .update({ portrait_url: trimmed || null })
+      .eq("id", agentId);
+    if (error) return { error: error.message };
+    revalidatePath("/coach");
+    revalidatePath("/coach/agents");
+    if (agentSlug?.trim()) {
+      revalidatePath(`/coach/agents/${agentSlug.trim()}`);
+    }
+    revalidatePath("/");
+    return { error: null };
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : "Failed to save portrait URL.",
+    };
+  }
+}

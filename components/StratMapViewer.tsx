@@ -1,6 +1,16 @@
 "use client";
 
-import { forwardRef, useMemo, useState, type ReactNode } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent,
+  type ReactNode,
+  type Ref,
+} from "react";
 import type {
   GameMap,
   MapFloorId,
@@ -15,7 +25,8 @@ import {
 } from "@/lib/map-overlay-geometry";
 import { stratMapDisplayData } from "@/lib/strat-map-display";
 import { outlinePathForStratSide } from "@/lib/map-strat-side";
-import type { MapPoint } from "@/lib/map-path";
+import { clientToSvgPoint } from "@/lib/svg-coords";
+import type { MapPoint, ViewBoxRect } from "@/lib/map-path";
 
 /** Read-only map overlay rendering (aligned with `MapShapeEditor` colors). */
 const SPAWN_ATK_FILL = "#ff3e3e";
@@ -285,9 +296,25 @@ const DEFAULT_VISIBILITY: StratMapLayerVisibility = {
 };
 
 const MAP_VIEWPORT_MIN_H_PX = 200;
-const MAP_VIEWPORT_MAX_W_PX = 2000;
-const MAP_VIEWPORT_MAX_H_PX = 1400;
 const MAP_VIEWPORT_MAX_DVH = 85;
+
+type PanDragState = {
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startView: ViewBoxRect;
+  userPerPxX: number;
+  userPerPxY: number;
+};
+
+function assignSvgRef(
+  r: Ref<SVGSVGElement> | undefined,
+  node: SVGSVGElement | null,
+) {
+  if (!r) return;
+  if (typeof r === "function") r(node);
+  else (r as { current: SVGSVGElement | null }).current = node;
+}
 
 function overlayVisible(
   sh: MapOverlayShape,
@@ -314,20 +341,160 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
     { gameMap, side, children, showLayerToggles = true },
     ref,
   ) {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const canvasRef = useRef<ViewBoxRect>({
+    minX: 0,
+    minY: 0,
+    width: 1,
+    height: 1,
+  });
+  const panDragRef = useRef<PanDragState | null>(null);
+
   const [vis, setVis] = useState<StratMapLayerVisibility>(DEFAULT_VISIBILITY);
   const effectiveVis = showLayerToggles ? vis : DEFAULT_VISIBILITY;
+  /** Zoom/pan window in SVG user units (editor-style; not persisted). */
+  const [viewport, setViewport] = useState<ViewBoxRect | null>(null);
+  const [rightPanning, setRightPanning] = useState(false);
+
+  const setSvgRef = useCallback(
+    (node: SVGSVGElement | null) => {
+      svgRef.current = node;
+      assignSvgRef(ref, node);
+    },
+    [ref],
+  );
 
   const { vb, overlays, spawn_markers, location_labels } = useMemo(
     () => stratMapDisplayData(gameMap, side),
     [gameMap, side],
   );
 
+  canvasRef.current = vb;
+  const displayVb = viewport ?? vb;
+  const vbStr = `${displayVb.minX} ${displayVb.minY} ${displayVb.width} ${displayVb.height}`;
+
   const territoryPathD = useMemo(
     () => outlinePathForStratSide(gameMap, side),
     [gameMap, side],
   );
 
-  const vbStr = `${vb.minX} ${vb.minY} ${vb.width} ${vb.height}`;
+  useEffect(() => {
+    setViewport(null);
+  }, [gameMap.id, side]);
+
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const canvas = canvasRef.current;
+      const pt = clientToSvgPoint(el, e.clientX, e.clientY);
+      const zoomIn = e.deltaY < 0;
+      setViewport((prev) => {
+        const cur: ViewBoxRect = prev ?? {
+          minX: canvas.minX,
+          minY: canvas.minY,
+          width: canvas.width,
+          height: canvas.height,
+        };
+        const scale = zoomIn ? 1 / 1.12 : 1.12;
+        let newW = cur.width * scale;
+        let newH = cur.height * scale;
+        newW = Math.min(
+          canvas.width,
+          Math.max(canvas.width * 0.02, newW),
+        );
+        newH = Math.min(
+          canvas.height,
+          Math.max(canvas.height * 0.02, newH),
+        );
+        let nx = pt.x - (pt.x - cur.minX) * (newW / cur.width);
+        let ny = pt.y - (pt.y - cur.minY) * (newH / cur.height);
+        nx = Math.max(
+          canvas.minX,
+          Math.min(canvas.minX + canvas.width - newW, nx),
+        );
+        ny = Math.max(
+          canvas.minY,
+          Math.min(canvas.minY + canvas.height - newH, ny),
+        );
+        return { minX: nx, minY: ny, width: newW, height: newH };
+      });
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
+  const onSvgPointerDown = useCallback(
+    (e: PointerEvent<SVGSVGElement>) => {
+      if (e.button === 2) {
+        e.preventDefault();
+        if (!viewport) return;
+        const svg = svgRef.current;
+        if (!svg) return;
+        const cur = viewport;
+        const br = svg.getBoundingClientRect();
+        const bw = Math.max(1, br.width);
+        const bh = Math.max(1, br.height);
+        panDragRef.current = {
+          pointerId: e.pointerId,
+          startClientX: e.clientX,
+          startClientY: e.clientY,
+          startView: cur,
+          userPerPxX: cur.width / bw,
+          userPerPxY: cur.height / bh,
+        };
+        setRightPanning(true);
+        (e.currentTarget as SVGSVGElement).setPointerCapture(e.pointerId);
+      }
+    },
+    [viewport],
+  );
+
+  const onSvgPointerMove = useCallback(
+    (e: PointerEvent<SVGSVGElement>) => {
+      const pan = panDragRef.current;
+      if (!pan || e.pointerId !== pan.pointerId) return;
+      e.preventDefault();
+      const dxPx = e.clientX - pan.startClientX;
+      const dyPx = e.clientY - pan.startClientY;
+      const dxUser = dxPx * pan.userPerPxX;
+      const dyUser = dyPx * pan.userPerPxY;
+      const canvas = canvasRef.current;
+      let nx = pan.startView.minX - dxUser;
+      let ny = pan.startView.minY - dyUser;
+      nx = Math.max(
+        canvas.minX,
+        Math.min(canvas.minX + canvas.width - pan.startView.width, nx),
+      );
+      ny = Math.max(
+        canvas.minY,
+        Math.min(canvas.minY + canvas.height - pan.startView.height, ny),
+      );
+      setViewport({
+        minX: nx,
+        minY: ny,
+        width: pan.startView.width,
+        height: pan.startView.height,
+      });
+    },
+    [],
+  );
+
+  const endRightPan = useCallback(
+    (e: PointerEvent<SVGSVGElement>) => {
+      const pan = panDragRef.current;
+      if (!pan || e.pointerId !== pan.pointerId) return;
+      panDragRef.current = null;
+      setRightPanning(false);
+      try {
+        (e.currentTarget as SVGSVGElement).releasePointerCapture(e.pointerId);
+      } catch {
+        /* already released */
+      }
+    },
+    [],
+  );
 
   const overlaysSorted = useMemo(() => {
     return [...overlays].sort((a, b) => {
@@ -384,15 +551,16 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
       <div
         className="overflow-hidden rounded-xl border border-violet-500/25 bg-slate-950/80"
         style={{
-          width: "min(100%, max(280px, 92vw))",
-          maxWidth: MAP_VIEWPORT_MAX_W_PX,
+          width: "100%",
           maxHeight: `${MAP_VIEWPORT_MAX_DVH}dvh`,
         }}
       >
         <svg
-          ref={ref}
+          ref={setSvgRef}
           viewBox={vbStr}
-          className="h-auto w-full select-none"
+          className={`h-auto w-full select-none touch-none ${
+            rightPanning ? "cursor-grabbing" : "cursor-crosshair"
+          }`}
           style={{
             minHeight: MAP_VIEWPORT_MIN_H_PX,
             maxHeight: `${MAP_VIEWPORT_MAX_DVH}dvh`,
@@ -400,6 +568,15 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
           preserveAspectRatio="xMidYMid meet"
           role="img"
           aria-label={`Map preview (${side === "atk" ? "attack" : "defense"} view). Vector layers from the map editor.`}
+          onPointerDown={onSvgPointerDown}
+          onPointerMove={onSvgPointerMove}
+          onPointerUp={endRightPan}
+          onPointerCancel={endRightPan}
+          onLostPointerCapture={() => {
+            panDragRef.current = null;
+            setRightPanning(false);
+          }}
+          onContextMenu={(e) => e.preventDefault()}
         >
           <title>
             Map layers for {gameMap.name} — {side === "atk" ? "attack" : "defense"}{" "}
@@ -594,17 +771,28 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
           {children}
         </svg>
       </div>
-      <p className="text-[11px] leading-relaxed text-violet-400/45">
-        Reference minimap art stays in the editor; strats use the saved outline and
-        overlays. Edit vectors on{" "}
-        <a
-          href={`/coach/maps/${gameMap.id}`}
-          className="text-violet-300/80 underline underline-offset-2 hover:text-violet-200"
-        >
-          Map shapes
-        </a>
-        .
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[11px] leading-relaxed text-violet-400/45">
+          Wheel: zoom · Right-drag: pan (when zoomed). Reference art stays in the
+          editor. Edit vectors on{" "}
+          <a
+            href={`/coach/maps/${gameMap.id}`}
+            className="text-violet-300/80 underline underline-offset-2 hover:text-violet-200"
+          >
+            Map shapes
+          </a>
+          .
+        </p>
+        {viewport ? (
+          <button
+            type="button"
+            onClick={() => setViewport(null)}
+            className="shrink-0 rounded-md border border-violet-700/50 bg-slate-950/80 px-2 py-1 text-[11px] font-medium text-violet-200 hover:border-violet-500/50 hover:bg-violet-950/50"
+          >
+            Reset zoom
+          </button>
+        ) : null}
+      </div>
     </div>
   );
   },

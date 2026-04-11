@@ -52,6 +52,15 @@ export function StratGrid({
     [initialStrats],
   );
 
+  const agentPortraitsBySlug = useMemo(() => {
+    const o: Record<string, string> = {};
+    for (const a of initialAgents) {
+      const u = a.portrait_url?.trim();
+      if (u) o[a.slug] = u;
+    }
+    return o;
+  }, [initialAgents]);
+
   const mapFilterOptions = useMemo(() => {
     const items: { key: string; label: string }[] = [
       { key: MAP_FILTER_ALL, label: "All maps" },
@@ -228,6 +237,7 @@ export function StratGrid({
                 <StratCard
                   strat={s}
                   agentNamesBySlug={agentNamesBySlug}
+                  agentPortraitsBySlug={agentPortraitsBySlug}
                   onOpen={setSelected}
                 />
               </li>
