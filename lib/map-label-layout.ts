@@ -42,6 +42,24 @@ const ANCHOR_CANDIDATES: MapLabelTextAnchor[] = [
   "bottom",
 ];
 
+/** Left↔right, top↔bottom — exact inverse offset under point reflection through viewBox center. */
+export function legacyTextAnchorAfterViewBoxCenterFlip(
+  a: MapLabelTextAnchor,
+): MapLabelTextAnchor {
+  switch (a) {
+    case "left":
+      return "right";
+    case "right":
+      return "left";
+    case "top":
+      return "bottom";
+    case "bottom":
+      return "top";
+    default:
+      return a;
+  }
+}
+
 function inferTextAnchorFromFlippedGeometry(
   ax: number,
   ay: number,
@@ -69,9 +87,14 @@ function inferTextAnchorFromFlippedGeometry(
 
 /**
  * After point reflection through the viewBox center (Swap sides), update anchor `(x,y)`,
- * `text_anchor`, and `text_rotation_deg` so the label text **origin** (before `rotate()`)
- * matches the reflected position — needed for ±90° text, where swapping anchor enum alone
- * jumped the text to the mirror side of the pin.
+ * `text_anchor`, and `text_rotation_deg`.
+ *
+ * For the **unrotated** text origin, `legacyTextAnchorAfterViewBoxCenterFlip` is exact:
+ * if `tp = mapLabel(anchor, A)` then `flip(tp) = mapLabel(legacy(anchor), flip(A))`.
+ * We verify numerically and fall back to least-squares only if float drift breaks that.
+ *
+ * **Rotation:** map flip is 180° about the view center; stored `text_rotation_deg` is
+ * updated with +180° (readable range), matching world orientation after the flip.
  */
 export function transformLocationLabelForViewBoxCenterFlip(
   vb: ViewBoxRect,
@@ -103,13 +126,26 @@ export function transformLocationLabelForViewBoxCenterFlip(
   const tpF = flip(tp.x, tp.y);
   const aF = flip(l.x, l.y);
 
-  const text_anchor = inferTextAnchorFromFlippedGeometry(
-    aF.x,
-    aF.y,
-    tpF.x,
-    tpF.y,
-    layoutArgs,
-  );
+  const legacy = legacyTextAnchorAfterViewBoxCenterFlip(l.text_anchor);
+  const tpLegacy = mapLabelTextSvgProps(legacy, {
+    px: aF.x,
+    py: aF.y,
+    ...layoutArgs,
+  });
+  const legacyErr =
+    (tpLegacy.x - tpF.x) ** 2 + (tpLegacy.y - tpF.y) ** 2;
+  const tol = Math.max(fs * fs * 1e-10, 1e-12);
+
+  let text_anchor: MapLabelTextAnchor =
+    legacyErr <= tol
+      ? legacy
+      : inferTextAnchorFromFlippedGeometry(
+          aF.x,
+          aF.y,
+          tpF.x,
+          tpF.y,
+          layoutArgs,
+        );
 
   return {
     x: aF.x,

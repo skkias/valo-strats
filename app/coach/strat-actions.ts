@@ -5,6 +5,7 @@ import { assertCoachGate } from "@/lib/coach-gate-server";
 import { createServiceSupabaseClient } from "@/lib/supabase-service";
 import type { Strat } from "@/types/strat";
 import { normalizeStratRow } from "@/lib/strat-normalize";
+import { normalizeStratStages } from "@/lib/strat-stages";
 
 export async function listStratsForCoach(): Promise<{
   data: Strat[] | null;
@@ -71,6 +72,7 @@ async function prepareStratRow(
     map: mapRow.name,
     map_id: mapId,
     agents,
+    strat_stages: normalizeStratStages(payload.strat_stages),
   };
   return { row, error: null };
 }

@@ -2906,9 +2906,10 @@ export function MapShapeEditor({
                     textOnlyGap,
                   });
                   const rot = l.text_rotation_deg ?? 0;
+                  /** Explicit translate/rotate chain matches SVG `rotate(a,cx,cy)` and avoids browser quirks with shorthand on `<text>`. */
                   const textRotate =
                     rot !== 0 && Number.isFinite(rot)
-                      ? `rotate(${rot}, ${tp.x}, ${tp.y})`
+                      ? `translate(${tp.x},${tp.y}) rotate(${rot}) translate(${-tp.x},${-tp.y})`
                       : undefined;
                   if (l.style === "text") {
                     return (

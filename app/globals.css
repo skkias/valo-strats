@@ -107,3 +107,33 @@ body {
     @apply inline-flex items-center justify-center rounded-lg border border-violet-800/50 bg-slate-950/50 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-violet-600/40 hover:bg-violet-950/30 disabled:opacity-50;
   }
 }
+
+/* Coach strat stage editor: map panel enter animation (driven by inline animation-name). */
+@keyframes strat-stage-fade {
+  from {
+    opacity: 0.2;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes strat-stage-slide-from-right {
+  from {
+    opacity: 0.35;
+    transform: translateX(22px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@keyframes strat-stage-slide-from-left {
+  from {
+    opacity: 0.35;
+    transform: translateX(-22px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}

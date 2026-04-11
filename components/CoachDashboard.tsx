@@ -1,7 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { Strat, StratImage, StratRole, StratSide } from "@/types/strat";
+import type {
+  Strat,
+  StratImage,
+  StratRole,
+  StratSide,
+  StratStage,
+} from "@/types/strat";
 import type { Agent, GameMap } from "@/types/catalog";
 import {
   Loader2,
@@ -13,6 +19,8 @@ import {
   Map as MapIcon,
 } from "lucide-react";
 import Link from "next/link";
+import { StratStageEditor } from "@/components/StratStageEditor";
+import { defaultStratStages } from "@/lib/strat-stages";
 import { lockCoach } from "@/app/coach/actions";
 import {
   createStratAction,
@@ -55,7 +63,20 @@ function parseRoles(text: string): StratRole[] {
   }, []);
 }
 
-function emptyForm() {
+function emptyForm(): {
+  title: string;
+  map_id: string;
+  side: StratSide;
+  agentSlots: [string, string, string, string, string];
+  difficulty: string;
+  description: string;
+  steps: string;
+  roles: string;
+  notes: string;
+  tags: string;
+  images: StratImage[];
+  stratStages: StratStage[];
+} {
   return {
     title: "",
     map_id: "",
@@ -68,6 +89,7 @@ function emptyForm() {
     notes: "",
     tags: "",
     images: [{ url: "", label: "" }] as StratImage[],
+    stratStages: defaultStratStages(),
   };
 }
 
@@ -200,6 +222,8 @@ export function CoachDashboard({
         s.images.length > 0
           ? s.images.map((i) => ({ url: i.url, label: i.label ?? "" }))
           : [{ url: "", label: "" }],
+      stratStages:
+        s.strat_stages.length > 0 ? s.strat_stages : defaultStratStages(),
     });
     setBanner(null);
   }
@@ -244,6 +268,7 @@ export function CoachDashboard({
       notes: form.notes.trim(),
       images,
       tags,
+      strat_stages: form.stratStages,
     };
   }
 
@@ -297,6 +322,8 @@ export function CoachDashboard({
 
   const catalogReady =
     !catalogError && initialAgents.length > 0 && initialMaps.length > 0;
+
+  const selectedStratMap = initialMaps.find((m) => m.id === form.map_id);
 
   return (
     <div className="space-y-10">
@@ -668,6 +695,31 @@ export function CoachDashboard({
               Add image row
             </button>
           </div>
+
+          {selectedStratMap ? (
+            <div className="space-y-3 border-t border-violet-900/40 pt-6">
+              <div>
+                <h3 className="text-sm font-semibold text-white">
+                  Strat map editor
+                </h3>
+                <p className="mt-1 text-xs text-violet-400/50">
+                  Multi-stage timeline: place comp agents and Q/E/C/X abilities on
+                  the map. Territory outline and cutouts are not shown; edit
+                  vectors on Map shapes.
+                </p>
+              </div>
+              <StratStageEditor
+                gameMap={selectedStratMap}
+                side={form.side}
+                compSlugs={form.agentSlots}
+                agentsCatalog={initialAgents}
+                stages={form.stratStages}
+                onStagesChange={(next) =>
+                  setForm((f) => ({ ...f, stratStages: next }))
+                }
+              />
+            </div>
+          ) : null}
 
           <div className="flex flex-wrap gap-3 pt-2">
             <button
