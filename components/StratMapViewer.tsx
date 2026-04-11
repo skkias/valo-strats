@@ -24,7 +24,7 @@ import {
   isCircleOverlay,
 } from "@/lib/map-overlay-geometry";
 import { stratMapDisplayData } from "@/lib/strat-map-display";
-import { outlinePathForStratSide } from "@/lib/map-strat-side";
+import { outlinePathForStratDisplay } from "@/lib/map-strat-side";
 import { clientToSvgPoint } from "@/lib/svg-coords";
 import type { MapPoint, ViewBoxRect } from "@/lib/map-path";
 import { RopeOverlaySvg } from "@/components/RopeOverlaySvg";
@@ -392,7 +392,7 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
   const vbStr = `${displayVb.minX} ${displayVb.minY} ${displayVb.width} ${displayVb.height}`;
 
   const territoryPathD = useMemo(
-    () => outlinePathForStratSide(gameMap, side),
+    () => outlinePathForStratDisplay(gameMap, side),
     [gameMap, side],
   );
 
