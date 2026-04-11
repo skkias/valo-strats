@@ -1,4 +1,5 @@
 import type {
+  MapFloorId,
   MapOverlayCircle,
   MapOverlayKind,
   MapOverlayShape,
@@ -20,6 +21,10 @@ function asFiniteNumber(v: unknown): number | null {
     if (Number.isFinite(n)) return n;
   }
   return null;
+}
+
+function parseFloor(raw: unknown): MapFloorId {
+  return raw === "upper" ? "upper" : "lower";
 }
 
 function parseKind(raw: unknown): MapOverlayKind | null {
@@ -57,6 +62,7 @@ export function normalizeExtraPaths(raw: unknown): MapOverlayShape[] {
     const id = typeof o.id === "string" && o.id ? o.id : newId();
     const kind = parseKind(o.kind);
     if (!kind) continue;
+    const floor = parseFloor(o.floor);
     const pts = Array.isArray(o.points) ? o.points : [];
     const points: MapPoint[] = [];
     for (const pt of pts) {
@@ -97,6 +103,7 @@ export function normalizeExtraPaths(raw: unknown): MapOverlayShape[] {
         out.push({
           id,
           kind,
+          floor,
           points: circleToGradeClosedPoints(circle),
           circle,
           gradeHighSide,
@@ -105,6 +112,7 @@ export function normalizeExtraPaths(raw: unknown): MapOverlayShape[] {
         out.push({
           id,
           kind,
+          floor,
           points: [],
           circle,
           gradeHighSide,
@@ -115,6 +123,7 @@ export function normalizeExtraPaths(raw: unknown): MapOverlayShape[] {
       out.push({
         id,
         kind,
+        floor,
         points,
         gradeHighSide,
         ...(door_is_open !== undefined ? { door_is_open } : {}),

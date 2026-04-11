@@ -16,6 +16,12 @@ export interface MapImageTransform {
   ty: number;
 }
 
+/**
+ * Vertical level for overlays on the same 2D minimap (e.g. ground vs raised site).
+ * Shapes can overlap in x/y; upper draws above lower.
+ */
+export type MapFloorId = "lower" | "upper";
+
 export type MapOverlayKind =
   | "obstacle"
   | "elevation"
@@ -43,6 +49,8 @@ export type MapOverlayCircle = { cx: number; cy: number; r: number };
 export interface MapOverlayShape {
   id: string;
   kind: MapOverlayKind;
+  /** Which vertical level this shape belongs to (default lower). */
+  floor?: MapFloorId;
   points: MapPoint[];
   /**
    * When set, the overlay is a circle (polygon kinds render as `<circle>`;
@@ -123,6 +131,15 @@ export interface MapEditorMeta {
    * the mirrored cyan shape (`path_def`) as attack for strats and labels.
    */
   side_meaning_inverted?: boolean;
+  /**
+   * Floor used for new overlays and emphasized in the editor (default lower).
+   */
+  active_floor?: MapFloorId;
+  /**
+   * When true, overlays on the non-active floor stay visible but dimmed.
+   * When false, only the active floor’s overlays are shown.
+   */
+  ghost_other_floor?: boolean;
   spawn_markers: MapSpawnMarker[];
   location_labels: MapLocationLabel[];
 }

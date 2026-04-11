@@ -1,5 +1,6 @@
 import type {
   MapEditorMeta,
+  MapFloorId,
   MapLabelTextAnchor,
   MapLocationLabel,
   MapLocationLabelStyle,
@@ -53,6 +54,8 @@ export function defaultEditorMeta(): MapEditorMeta {
   return {
     show_reference_image: true,
     side_meaning_inverted: false,
+    active_floor: "lower",
+    ghost_other_floor: true,
     spawn_markers: [],
     location_labels: [],
   };
@@ -67,6 +70,13 @@ export function normalizeEditorMeta(raw: unknown): MapEditorMeta {
   }
   if (typeof o.side_meaning_inverted === "boolean") {
     d.side_meaning_inverted = o.side_meaning_inverted;
+  }
+  const af = o.active_floor;
+  if (af === "lower" || af === "upper") {
+    d.active_floor = af as MapFloorId;
+  }
+  if (typeof o.ghost_other_floor === "boolean") {
+    d.ghost_other_floor = o.ghost_other_floor;
   }
   const spawns: MapSpawnMarker[] = [];
   if (Array.isArray(o.spawn_markers)) {

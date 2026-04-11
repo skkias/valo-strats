@@ -13,6 +13,7 @@ import type { CSSProperties } from "react";
 import type {
   GameMap,
   MapEditorMeta,
+  MapFloorId,
   MapImageTransform,
   MapLabelTextAnchor,
   MapLocationLabelStyle,
@@ -32,7 +33,10 @@ import {
   type MapPoint,
   type ViewBoxRect,
 } from "@/lib/map-path";
-import { mapLabelTextSvgProps } from "@/lib/map-label-layout";
+import {
+  labelRotationAfterCenterFlip,
+  mapLabelTextSvgProps,
+} from "@/lib/map-label-layout";
 import {
   circleToGradeClosedPoints,
   circleToPolygon,
@@ -77,6 +81,7 @@ import {
   FlipVertical2,
   Hammer,
   ImagePlus,
+  Layers,
   Loader2,
   MapPin,
   Mountain,
@@ -111,6 +116,10 @@ const LABEL_ROTATION_PRESETS: ReadonlyArray<{ deg: number; short: string }> = [
   { deg: -90, short: "−90°" },
   { deg: 180, short: "180°" },
 ];
+
+function overlayFloor(sh: MapOverlayShape): MapFloorId {
+  return sh.floor === "upper" ? "upper" : "lower";
+}
 
 type Tool = "draw" | "edit";
 
@@ -238,7 +247,10 @@ function overlayPolygonStyle(kind: MapOverlayKind): {
     case "wall":
       return { fill: "rgba(148,163,184,0.18)", stroke: "rgb(148,163,184)" };
     case "plant_site":
-      return { fill: "rgba(16,185,129,0.14)", stroke: "rgb(52,211,153)" };
+      return {
+        fill: "rgba(255,62,62,0.16)",
+        stroke: SPAWN_ATK_FILL,
+      };
     case "grade":
       return null;
     default:
@@ -261,7 +273,10 @@ function overlayPolygonStyleHover(
     case "wall":
       return { fill: "rgba(186,198,216,0.48)", stroke: "rgb(241,245,249)" };
     case "plant_site":
-      return { fill: "rgba(45,212,191,0.38)", stroke: "rgb(204,251,241)" };
+      return {
+        fill: "rgba(255,62,62,0.38)",
+        stroke: SPAWN_ATK_STROKE,
+      };
     default:
       return base;
   }
@@ -276,7 +291,7 @@ function overlayPassiveFill(kind: MapOverlayKind): string {
     case "wall":
       return "rgba(148,163,184,0.5)";
     case "plant_site":
-      return "rgba(52,211,153,0.5)";
+      return "rgba(255,62,62,0.5)";
     case "grade":
       return "rgba(34,211,238,0.5)";
     case "breakable_doorway":
@@ -301,7 +316,7 @@ function overlayPassiveFillHover(
     case "wall":
       return "rgba(241,245,249,0.95)";
     case "plant_site":
-      return "rgba(167,243,208,0.95)";
+      return "rgba(254,202,202,0.95)";
     case "grade":
       return "rgba(165,243,252,0.98)";
     case "breakable_doorway":
@@ -326,7 +341,7 @@ function overlayActiveVertexFill(
     case "wall":
       return "rgb(203,213,225)";
     case "plant_site":
-      return "rgb(110,231,183)";
+      return "rgb(248,113,113)";
     case "grade":
       return "rgb(103,232,249)";
     case "breakable_doorway":
@@ -757,9 +772,42 @@ export function MapShapeEditor({
     return { defOuter: d.outer, defHoles: d.holes };
   }, [vbRect, outlineOuter, outlineHoles]);
 
+  const overlaysSortedByFloor = useMemo(() => {
+    return [...overlays].sort((a, b) => {
+      const fa = overlayFloor(a) === "lower" ? 0 : 1;
+      const fb = overlayFloor(b) === "lower" ? 0 : 1;
+      return fa - fb;
+    });
+  }, [overlays]);
+
+  const emphasizeOverlayId =
+    activeLayer.kind === "overlay"
+      ? activeLayer.id
+      : sidebarHoverOverlayId;
+
+  const overlayFloorOpacity = useCallback(
+    (sh: MapOverlayShape) => {
+      const f = overlayFloor(sh);
+      const af = editorMeta.active_floor ?? "lower";
+      const ghost = editorMeta.ghost_other_floor !== false;
+      if (f === af) return 1;
+      if (!ghost) return 0;
+      if (emphasizeOverlayId === sh.id) return 0.88;
+      return 0.38;
+    },
+    [
+      editorMeta.active_floor,
+      editorMeta.ghost_other_floor,
+      emphasizeOverlayId,
+    ],
+  );
+
   const defensePreviewOverlays = useMemo(
-    () => overlays.map((sh) => mirrorOverlayForDefensePreview(vbRect, sh)),
-    [overlays, vbRect],
+    () =>
+      overlaysSortedByFloor.map((sh) =>
+        mirrorOverlayForDefensePreview(vbRect, sh),
+      ),
+    [overlaysSortedByFloor, vbRect],
   );
 
   const outlineAtkD = useMemo(() => {
@@ -1512,6 +1560,10 @@ export function MapShapeEditor({
       } else {
         const sh = overlays.find((o) => o.id === layer.id);
         if (!sh) return;
+        setEditorMeta((m) => ({
+          ...m,
+          active_floor: overlayFloor(sh),
+        }));
         setSelection({ kind: "overlay", shapeId: layer.id, indices });
         dragRef.current = {
           pointerId: e.pointerId,
@@ -1660,6 +1712,10 @@ export function MapShapeEditor({
     } else {
       indices = [i];
     }
+    setEditorMeta((m) => ({
+      ...m,
+      active_floor: overlayFloor(sh),
+    }));
     setActiveLayer(layer);
     setSelection({ kind: "overlay", shapeId: sh.id, indices });
     dragRef.current = {
@@ -1777,19 +1833,28 @@ export function MapShapeEditor({
       return;
     }
     const id = newShapeId();
+    const floor: MapFloorId = editorMeta.active_floor ?? "lower";
     setOverlays((list) => [
       ...list,
       kind === "grade"
-        ? { id, kind, points: [], gradeHighSide: 1 as const, circle: undefined }
+        ? {
+            id,
+            kind,
+            floor,
+            points: [],
+            gradeHighSide: 1 as const,
+            circle: undefined,
+          }
         : kind === "toggle_door"
           ? {
               id,
               kind,
+              floor,
               points: [],
               circle: undefined,
               door_is_open: false,
             }
-          : { id, kind, points: [], circle: undefined },
+          : { id, kind, floor, points: [], circle: undefined },
     ]);
     setActiveLayer({ kind: "overlay", id });
     setTool("draw");
@@ -1818,6 +1883,19 @@ export function MapShapeEditor({
           : s,
       ),
     );
+  }
+
+  function moveActiveOverlayToOtherFloor() {
+    if (activeLayer.kind !== "overlay") return;
+    const id = activeLayer.id;
+    const sh = overlays.find((o) => o.id === id);
+    if (!sh) return;
+    const nextFloor: MapFloorId =
+      overlayFloor(sh) === "lower" ? "upper" : "lower";
+    setOverlays((list) =>
+      list.map((s) => (s.id === id ? { ...s, floor: nextFloor } : s)),
+    );
+    setEditorMeta((m) => ({ ...m, active_floor: nextFloor }));
   }
 
   function removeOverlay(id: string) {
@@ -1900,15 +1978,14 @@ export function MapShapeEditor({
                   : l.text_anchor === "bottom"
                     ? "top"
                     : l.text_anchor;
-          let rot = l.text_rotation_deg + 180;
-          if (rot > 180) rot -= 360;
-          if (rot < -180) rot += 360;
           return {
             ...l,
             x: q.x,
             y: q.y,
             text_anchor,
-            text_rotation_deg: rot,
+            text_rotation_deg: labelRotationAfterCenterFlip(
+              l.text_rotation_deg ?? 0,
+            ),
           };
         }),
       };
@@ -2131,7 +2208,12 @@ export function MapShapeEditor({
             </strong>{" "}
             if your reference image has attack/defense reversed. Use Edit to drag
             vertices, Shift+click to multi-select, and click passive overlay vertices
-            on the canvas to select their layer.
+            on the canvas to select their layer. Use{" "}
+            <strong className="font-medium text-violet-200/80">Lower</strong> /{" "}
+            <strong className="font-medium text-violet-200/80">Upper</strong>{" "}
+            to stack two overlapping plan levels (same x/y; upper draws on top).
+            Uncheck <strong className="font-medium text-violet-200/80">Dim other floor</strong>{" "}
+            to hide the inactive floor while editing.
           </p>
         </details>
         <button
@@ -2250,6 +2332,54 @@ export function MapShapeEditor({
                   <ArrowDownUp className="h-3.5 w-3.5" />
                   Invert atk/def meaning
                 </button>
+                <span
+                  className="inline-flex shrink-0 items-center gap-0.5 text-violet-300/50"
+                  title="Stacked 2D levels (e.g. site vs heaven)"
+                >
+                  <Layers className="h-3.5 w-3.5" />
+                </span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setEditorMeta((m) => ({ ...m, active_floor: "lower" }))
+                  }
+                  className={`btn-secondary inline-flex shrink-0 items-center gap-1 px-2 py-1 ${
+                    (editorMeta.active_floor ?? "lower") === "lower"
+                      ? "border-sky-500/45 bg-sky-950/35 text-sky-100"
+                      : ""
+                  }`}
+                  title="Lower floor: new overlays go here; drawn below upper in this view"
+                >
+                  Lower
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setEditorMeta((m) => ({ ...m, active_floor: "upper" }))
+                  }
+                  className={`btn-secondary inline-flex shrink-0 items-center gap-1 px-2 py-1 ${
+                    (editorMeta.active_floor ?? "lower") === "upper"
+                      ? "border-violet-400/45 bg-violet-950/40 text-violet-100"
+                      : ""
+                  }`}
+                  title="Upper floor: new overlays here; drawn above lower when both are visible"
+                >
+                  Upper
+                </button>
+                <label className="inline-flex shrink-0 cursor-pointer items-center gap-1.5 text-violet-300/70">
+                  <input
+                    type="checkbox"
+                    className="rounded border-violet-700 bg-slate-900"
+                    checked={editorMeta.ghost_other_floor !== false}
+                    onChange={(e) =>
+                      setEditorMeta((m) => ({
+                        ...m,
+                        ghost_other_floor: e.target.checked,
+                      }))
+                    }
+                  />
+                  Dim other floor
+                </label>
                 <span className="shrink-0 whitespace-nowrap text-violet-300/40">
                   Scroll to zoom. Right-drag to pan when zoomed. Drag the map
                   panel corner to resize — grows with the layout, with caps on
@@ -2386,61 +2516,93 @@ export function MapShapeEditor({
               {showDefensePreview &&
                 outlineReady &&
                 defensePreviewOverlays.map((sh) => {
+                  const op = overlayFloorOpacity(sh);
+                  if (op < 0.02) return null;
                   if (
                     sh.kind === "breakable_doorway" ||
                     sh.kind === "toggle_door"
                   ) {
                     return (
-                      <DoorwayOverlaySvg
+                      <g
                         key={`def-prev-${sh.id}`}
-                        sh={sh}
-                        vbWidth={vb.width}
-                        highlight={false}
-                        tone="defenseGhost"
-                      />
+                        style={{ opacity: op }}
+                        pointerEvents="none"
+                      >
+                        <DoorwayOverlaySvg
+                          sh={sh}
+                          vbWidth={vb.width}
+                          highlight={false}
+                          tone="defenseGhost"
+                        />
+                      </g>
                     );
                   }
                   if (sh.kind === "grade") {
                     return (
-                      <GradeOverlaySvg
+                      <g
                         key={`def-prev-${sh.id}`}
-                        sh={sh}
-                        vbWidth={vb.width}
-                        tone="defenseGhost"
-                      />
+                        style={{ opacity: op }}
+                        pointerEvents="none"
+                      >
+                        <GradeOverlaySvg
+                          sh={sh}
+                          vbWidth={vb.width}
+                          tone="defenseGhost"
+                        />
+                      </g>
                     );
                   }
                   if (isCircleOverlay(sh) && sh.circle) {
                     const c = sh.circle;
+                    const plant = sh.kind === "plant_site";
                     return (
-                      <circle
+                      <g
                         key={`def-prev-${sh.id}`}
-                        cx={c.cx}
-                        cy={c.cy}
-                        r={c.r}
-                        fill="rgba(56,189,248,0.1)"
-                        stroke="rgb(56,189,248)"
-                        strokeWidth={vb.width * 0.0025}
-                        strokeDasharray="6 4"
+                        style={{ opacity: op }}
                         pointerEvents="none"
-                      />
+                      >
+                        <circle
+                          cx={c.cx}
+                          cy={c.cy}
+                          r={c.r}
+                          fill={
+                            plant
+                              ? "rgba(255,62,62,0.12)"
+                              : "rgba(56,189,248,0.1)"
+                          }
+                          stroke={plant ? SPAWN_ATK_FILL : "rgb(56,189,248)"}
+                          strokeWidth={vb.width * 0.0025}
+                          strokeDasharray="6 4"
+                          pointerEvents="none"
+                        />
+                      </g>
                     );
                   }
                   const d = previewOverlayStrokePath(sh.kind, sh.points);
                   if (!d) return null;
+                  const plant = sh.kind === "plant_site";
                   return (
-                    <path
+                    <g
                       key={`def-prev-${sh.id}`}
-                      d={d}
-                      fill="rgba(56,189,248,0.08)"
-                      stroke="rgb(56,189,248)"
-                      strokeWidth={vb.width * 0.0028}
-                      strokeDasharray={
-                        sh.kind === "plant_site" ? "9 6" : "6 5"
-                      }
-                      strokeLinejoin="round"
+                      style={{ opacity: op }}
                       pointerEvents="none"
-                    />
+                    >
+                      <path
+                        d={d}
+                        fill={
+                          plant
+                            ? "rgba(255,62,62,0.1)"
+                            : "rgba(56,189,248,0.08)"
+                        }
+                        stroke={plant ? SPAWN_ATK_FILL : "rgb(56,189,248)"}
+                        strokeWidth={vb.width * 0.0028}
+                        strokeDasharray={
+                          sh.kind === "plant_site" ? "9 6" : "6 5"
+                        }
+                        strokeLinejoin="round"
+                        pointerEvents="none"
+                      />
+                    </g>
                   );
                 })}
               {outlineAtkD && (
@@ -2505,29 +2667,33 @@ export function MapShapeEditor({
                   outlineAtkD && outlineReady ? `url(#${clipId})` : undefined
                 }
               >
-                {overlays.map((sh) => {
+                {overlaysSortedByFloor.map((sh) => {
+                  const op = overlayFloorOpacity(sh);
+                  if (op < 0.02) return null;
                   const hl = sidebarHoverOverlayId === sh.id;
                   if (
                     sh.kind === "breakable_doorway" ||
                     sh.kind === "toggle_door"
                   ) {
                     return (
-                      <DoorwayOverlaySvg
-                        key={sh.id}
-                        sh={sh}
-                        vbWidth={vb.width}
-                        highlight={hl}
-                      />
+                      <g key={sh.id} style={{ opacity: op }} pointerEvents="none">
+                        <DoorwayOverlaySvg
+                          sh={sh}
+                          vbWidth={vb.width}
+                          highlight={hl}
+                        />
+                      </g>
                     );
                   }
                   if (sh.kind === "grade") {
                     return (
-                      <GradeOverlaySvg
-                        key={sh.id}
-                        sh={sh}
-                        vbWidth={vb.width}
-                        highlight={hl}
-                      />
+                      <g key={sh.id} style={{ opacity: op }} pointerEvents="none">
+                        <GradeOverlaySvg
+                          sh={sh}
+                          vbWidth={vb.width}
+                          highlight={hl}
+                        />
+                      </g>
                     );
                   }
                   if (isCircleOverlay(sh) && sh.circle) {
@@ -2535,16 +2701,17 @@ export function MapShapeEditor({
                     if (!poly) return null;
                     const c = sh.circle;
                     return (
-                      <circle
-                        key={sh.id}
-                        cx={c.cx}
-                        cy={c.cy}
-                        r={c.r}
-                        fill={poly.fill}
-                        stroke={poly.stroke}
-                        strokeWidth={vb.width * 0.003 * (hl ? 2.2 : 1)}
-                        pointerEvents="none"
-                      />
+                      <g key={sh.id} style={{ opacity: op }} pointerEvents="none">
+                        <circle
+                          cx={c.cx}
+                          cy={c.cy}
+                          r={c.r}
+                          fill={poly.fill}
+                          stroke={poly.stroke}
+                          strokeWidth={vb.width * 0.003 * (hl ? 2.2 : 1)}
+                          pointerEvents="none"
+                        />
+                      </g>
                     );
                   }
                   const d = previewOverlayStrokePath(sh.kind, sh.points);
@@ -2552,25 +2719,28 @@ export function MapShapeEditor({
                   const poly = overlayPolygonStyleHover(sh.kind, hl);
                   if (!poly) return null;
                   return (
-                    <path
-                      key={sh.id}
-                      d={d}
-                      fill={poly.fill}
-                      stroke={poly.stroke}
-                      strokeWidth={vb.width * 0.003 * (hl ? 2.2 : 1)}
-                      strokeLinejoin="round"
-                      strokeDasharray={
-                        sh.kind === "plant_site" ? "9 6" : undefined
-                      }
-                      pointerEvents="none"
-                    />
+                    <g key={sh.id} style={{ opacity: op }} pointerEvents="none">
+                      <path
+                        d={d}
+                        fill={poly.fill}
+                        stroke={poly.stroke}
+                        strokeWidth={vb.width * 0.003 * (hl ? 2.2 : 1)}
+                        strokeLinejoin="round"
+                        strokeDasharray={
+                          sh.kind === "plant_site" ? "9 6" : undefined
+                        }
+                        pointerEvents="none"
+                      />
+                    </g>
                   );
                 })}
               </g>
 
               {tool === "edit" &&
                 outlineReady &&
-                overlays.flatMap((sh) =>
+                overlaysSortedByFloor
+                  .filter((sh) => overlayFloorOpacity(sh) > 0)
+                  .flatMap((sh) =>
                   (isCircleOverlay(sh) ? [] : sh.points).flatMap((p, i) => {
                     if (
                       activeLayer.kind === "overlay" &&
@@ -3619,7 +3789,13 @@ export function MapShapeEditor({
                 }}
               >
                 {OVERLAY_KIND_ORDER.map((kind) => {
-                  const items = overlays.filter((o) => o.kind === kind);
+                  const items = overlays
+                    .filter((o) => o.kind === kind)
+                    .sort((a, b) => {
+                      const fa = overlayFloor(a) === "lower" ? 0 : 1;
+                      const fb = overlayFloor(b) === "lower" ? 0 : 1;
+                      return fa - fb;
+                    });
                   if (items.length === 0) return null;
                   const sectionIcon =
                     kind === "obstacle" ? (
@@ -3629,7 +3805,7 @@ export function MapShapeEditor({
                     ) : kind === "wall" ? (
                       <BrickWall className="h-4 w-4 shrink-0 text-slate-300" />
                     ) : kind === "plant_site" ? (
-                      <Target className="h-4 w-4 shrink-0 text-emerald-300" />
+                      <Target className="h-4 w-4 shrink-0 text-red-400" />
                     ) : kind === "grade" ? (
                       <ArrowUpFromLine className="h-4 w-4 shrink-0 text-cyan-300" />
                     ) : kind === "breakable_doorway" ? (
@@ -3676,7 +3852,7 @@ export function MapShapeEditor({
                               : activeOv && sh.kind === "wall"
                                 ? "rounded-lg border border-slate-500/40 bg-slate-900/25 p-1"
                                 : activeOv && sh.kind === "plant_site"
-                                  ? "rounded-lg border border-emerald-500/40 bg-emerald-950/25 p-1"
+                                  ? "rounded-lg border border-red-500/40 bg-red-950/25 p-1"
                                   : activeOv && sh.kind === "elevation"
                                     ? "rounded-lg border border-emerald-500/35 bg-emerald-950/20 p-1"
                                     : activeOv &&
@@ -3699,6 +3875,10 @@ export function MapShapeEditor({
                               <button
                                 type="button"
                                 onClick={() => {
+                                  setEditorMeta((m) => ({
+                                    ...m,
+                                    active_floor: overlayFloor(sh),
+                                  }));
                                   setActiveLayer({ kind: "overlay", id: sh.id });
                                   setSelection(null);
                                 }}
@@ -3711,6 +3891,16 @@ export function MapShapeEditor({
                               >
                                 <span className="truncate tabular-nums text-violet-300/90">
                                   #{idx + 1}
+                                </span>
+                                <span
+                                  className="shrink-0 rounded border border-violet-600/45 px-1 font-mono text-[10px] uppercase text-violet-300/85"
+                                  title={
+                                    overlayFloor(sh) === "upper"
+                                      ? "Upper floor (drawn above lower in this view)"
+                                      : "Lower floor"
+                                  }
+                                >
+                                  {overlayFloor(sh) === "upper" ? "U" : "L"}
                                 </span>
                                 <span className="font-mono text-xs text-violet-500">
                                   {isCircleOverlay(sh)
@@ -3784,7 +3974,7 @@ export function MapShapeEditor({
                 disabled={!outlineReady}
                 title={
                   outlineReady
-                    ? "Closed polygon: plantable site / spike zone border (dashed green)"
+                    ? "Closed polygon: plantable site / spike zone border (dashed, attacker color)"
                     : "Define the map outline first"
                 }
                 className="btn-secondary inline-flex items-center gap-1 text-xs disabled:opacity-40"
@@ -3871,6 +4061,24 @@ export function MapShapeEditor({
                   )}
                 </button>
               )}
+            {activeLayer.kind === "overlay" &&
+              (() => {
+                const ao = overlays.find((o) => o.id === activeLayer.id);
+                if (!ao) return null;
+                const dest =
+                  overlayFloor(ao) === "lower" ? "upper" : "lower";
+                return (
+                  <button
+                    type="button"
+                    onClick={moveActiveOverlayToOtherFloor}
+                    className="btn-secondary mt-2 inline-flex w-full items-center justify-center gap-1.5 text-xs"
+                    title="Move this overlay to the other vertical level (same geometry, different floor tag)"
+                  >
+                    <Layers className="h-3.5 w-3.5" />
+                    Move to {dest} floor
+                  </button>
+                );
+              })()}
             {!outlineReady && (
               <p className="mt-2 text-xs text-amber-200/70">
                 Close the purple outline (≥3 points) before adding overlays.
