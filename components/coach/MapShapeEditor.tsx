@@ -16,6 +16,7 @@ import type {
   MapFloorId,
   MapImageTransform,
   MapLabelTextAnchor,
+  MapLocationLabel,
   MapLocationLabelStyle,
   MapOverlayCircle,
   MapOverlayKind,
@@ -42,7 +43,6 @@ import {
   circleToPolygon,
   clampCircleInPlayableRegion,
   isCircleOverlay,
-  mirrorOverlayForDefensePreview,
   OVERLAY_CIRCLE_SEGMENTS,
   sanitizeOverlayForSave,
 } from "@/lib/map-overlay-geometry";
@@ -123,6 +123,8 @@ function overlayFloor(sh: MapOverlayShape): MapFloorId {
 
 type Tool = "draw" | "edit";
 
+type EditorSidebarTab = "map-shape" | "objects" | "annotation";
+
 type ActiveLayer =
   | { kind: "outline"; holeIndex: number | null }
   | { kind: "overlay"; id: string };
@@ -182,9 +184,53 @@ const VERTEX_STROKE_SCREEN_PX = 1.35;
 const PASSIVE_VERTEX_SCREEN_PX = 4.5;
 const PASSIVE_STROKE_SCREEN_PX = 1;
 
-/** Attacker spawn markers — complements defender sky-blue (`rgb(125,211,252)`). */
+/** Attacker (red) vs defender (saturated blue) — symmetric white stroke for contrast on the map. */
 const SPAWN_ATK_FILL = "#ff3e3e";
 const SPAWN_ATK_STROKE = "#ffffff";
+const SPAWN_DEF_FILL = "#2563eb";
+const SPAWN_DEF_STROKE = "#ffffff";
+
+/**
+ * Elevation walkable polygons: lower ≈ ground (“hell”), upper ≈ raised (“heaven”).
+ * Warm ember/stone vs cool sky reads clearly when both stack on one minimap.
+ */
+const WALKABLE_LOWER_FILL = "rgba(120,53,18,0.22)";
+const WALKABLE_LOWER_STROKE = "rgb(234,88,12)";
+const WALKABLE_LOWER_HOVER_FILL = "rgba(251,146,60,0.44)";
+const WALKABLE_LOWER_HOVER_STROKE = "rgb(254,215,170)";
+const WALKABLE_LOWER_PASSIVE = "rgba(234,88,12,0.52)";
+const WALKABLE_LOWER_PASSIVE_HOVER = "rgba(254,215,170,0.96)";
+const WALKABLE_LOWER_VERTEX = "rgb(251,146,60)";
+
+const WALKABLE_UPPER_FILL = "rgba(14,165,233,0.24)";
+const WALKABLE_UPPER_STROKE = "rgb(56,189,248)";
+const WALKABLE_UPPER_HOVER_FILL = "rgba(125,211,252,0.48)";
+const WALKABLE_UPPER_HOVER_STROKE = "rgb(224,242,254)";
+const WALKABLE_UPPER_PASSIVE = "rgba(56,189,248,0.52)";
+const WALKABLE_UPPER_PASSIVE_HOVER = "rgba(186,230,253,0.97)";
+const WALKABLE_UPPER_VERTEX = "rgb(125,211,252)";
+
+function walkableElevationPolygonStyle(
+  floor: MapFloorId,
+): { fill: string; stroke: string } {
+  return floor === "upper"
+    ? { fill: WALKABLE_UPPER_FILL, stroke: WALKABLE_UPPER_STROKE }
+    : { fill: WALKABLE_LOWER_FILL, stroke: WALKABLE_LOWER_STROKE };
+}
+
+function walkableElevationPolygonHoverStyle(
+  floor: MapFloorId,
+): { fill: string; stroke: string } {
+  return floor === "upper"
+    ? {
+        fill: WALKABLE_UPPER_HOVER_FILL,
+        stroke: WALKABLE_UPPER_HOVER_STROKE,
+      }
+    : {
+        fill: WALKABLE_LOWER_HOVER_FILL,
+        stroke: WALKABLE_LOWER_HOVER_STROKE,
+      };
+}
 
 function previewOpenOrClosed(points: MapPoint[]): string | null {
   if (points.length === 0) return null;
@@ -235,7 +281,10 @@ const OVERLAY_KIND_ORDER: MapOverlayKind[] = [
   "toggle_door",
 ];
 
-function overlayPolygonStyle(kind: MapOverlayKind): {
+function overlayPolygonStyle(
+  kind: MapOverlayKind,
+  floor: MapFloorId = "lower",
+): {
   fill: string;
   stroke: string;
 } | null {
@@ -243,7 +292,7 @@ function overlayPolygonStyle(kind: MapOverlayKind): {
     case "obstacle":
       return { fill: "rgba(251,191,36,0.14)", stroke: "rgb(251,191,36)" };
     case "elevation":
-      return { fill: "rgba(52,211,153,0.14)", stroke: "rgb(52,211,153)" };
+      return walkableElevationPolygonStyle(floor);
     case "wall":
       return { fill: "rgba(148,163,184,0.18)", stroke: "rgb(148,163,184)" };
     case "plant_site":
@@ -261,15 +310,16 @@ function overlayPolygonStyle(kind: MapOverlayKind): {
 function overlayPolygonStyleHover(
   kind: MapOverlayKind,
   highlight: boolean,
+  floor: MapFloorId = "lower",
 ): { fill: string; stroke: string } | null {
-  const base = overlayPolygonStyle(kind);
+  const base = overlayPolygonStyle(kind, floor);
   if (!base) return null;
   if (!highlight) return base;
   switch (kind) {
     case "obstacle":
       return { fill: "rgba(251,191,36,0.42)", stroke: "rgb(254,249,195)" };
     case "elevation":
-      return { fill: "rgba(45,212,191,0.4)", stroke: "rgb(204,251,241)" };
+      return walkableElevationPolygonHoverStyle(floor);
     case "wall":
       return { fill: "rgba(186,198,216,0.48)", stroke: "rgb(241,245,249)" };
     case "plant_site":
@@ -282,12 +332,15 @@ function overlayPolygonStyleHover(
   }
 }
 
-function overlayPassiveFill(kind: MapOverlayKind): string {
+function overlayPassiveFill(
+  kind: MapOverlayKind,
+  floor: MapFloorId = "lower",
+): string {
   switch (kind) {
     case "obstacle":
       return "rgba(251,191,36,0.45)";
     case "elevation":
-      return "rgba(52,211,153,0.45)";
+      return floor === "upper" ? WALKABLE_UPPER_PASSIVE : WALKABLE_LOWER_PASSIVE;
     case "wall":
       return "rgba(148,163,184,0.5)";
     case "plant_site":
@@ -306,13 +359,16 @@ function overlayPassiveFill(kind: MapOverlayKind): string {
 function overlayPassiveFillHover(
   kind: MapOverlayKind,
   sidebarHover: boolean,
+  floor: MapFloorId = "lower",
 ): string {
-  if (!sidebarHover) return overlayPassiveFill(kind);
+  if (!sidebarHover) return overlayPassiveFill(kind, floor);
   switch (kind) {
     case "obstacle":
       return "rgba(254,243,199,0.95)";
     case "elevation":
-      return "rgba(167,243,208,0.95)";
+      return floor === "upper"
+        ? WALKABLE_UPPER_PASSIVE_HOVER
+        : WALKABLE_LOWER_PASSIVE_HOVER;
     case "wall":
       return "rgba(241,245,249,0.95)";
     case "plant_site":
@@ -324,20 +380,21 @@ function overlayPassiveFillHover(
     case "toggle_door":
       return "rgba(129,140,248,0.55)";
     default:
-      return overlayPassiveFill(kind);
+      return overlayPassiveFill(kind, floor);
   }
 }
 
 function overlayActiveVertexFill(
   kind: MapOverlayKind,
   selected: boolean,
+  floor: MapFloorId = "lower",
 ): string {
   if (selected) return "rgb(250,250,250)";
   switch (kind) {
     case "obstacle":
       return "rgb(253,224,71)";
     case "elevation":
-      return "rgb(167,243,208)";
+      return floor === "upper" ? WALKABLE_UPPER_VERTEX : WALKABLE_LOWER_VERTEX;
     case "wall":
       return "rgb(203,213,225)";
     case "plant_site":
@@ -358,14 +415,11 @@ function GradeOverlaySvg({
   sh,
   vbWidth,
   highlight,
-  tone = "default",
 }: {
   sh: MapOverlayShape;
   vbWidth: number;
   /** Sidebar row hover → brighter stroke/fill on canvas */
   highlight?: boolean;
-  /** Cyan ghost for defense-side preview */
-  tone?: "default" | "defenseGhost";
 }) {
   const pts =
     isCircleOverlay(sh) && sh.circle
@@ -373,35 +427,18 @@ function GradeOverlaySvg({
       : sh.points;
   const sw = vbWidth * 0.0035 * (highlight ? 1.35 : 1);
   const side = sh.gradeHighSide ?? 1;
-  const ghost = tone === "defenseGhost";
-  const lineStroke = ghost
-    ? highlight
-      ? "rgb(186,230,253)"
-      : "rgb(56,189,248)"
-    : highlight
-      ? "rgb(207,250,254)"
-      : "rgb(34,211,238)";
-  const spikeFill = ghost
-    ? highlight
-      ? "rgba(186,230,253,0.95)"
-      : "rgba(56,189,248,0.88)"
-    : highlight
-      ? "rgba(207,250,254,0.98)"
-      : "rgba(34,211,238,0.92)";
-  const dotFill = ghost
-    ? highlight
-      ? "rgba(186,230,253,0.5)"
-      : "rgba(56,189,248,0.35)"
-    : highlight
-      ? "rgba(207,250,254,0.55)"
-      : "rgba(34,211,238,0.35)";
-  const dotStroke = ghost
-    ? highlight
-      ? "rgb(224,242,254)"
-      : "rgb(125,211,252)"
-    : highlight
-      ? "rgb(236,254,255)"
-      : "rgb(34,211,238)";
+  const lineStroke = highlight
+    ? "rgb(207,250,254)"
+    : "rgb(34,211,238)";
+  const spikeFill = highlight
+    ? "rgba(207,250,254,0.98)"
+    : "rgba(34,211,238,0.92)";
+  const dotFill = highlight
+    ? "rgba(207,250,254,0.55)"
+    : "rgba(34,211,238,0.35)";
+  const dotStroke = highlight
+    ? "rgb(236,254,255)"
+    : "rgb(34,211,238)";
   const spikeDepth = vbWidth * (highlight ? 0.012 : 0.01);
   const spikeHalfW = vbWidth * 0.0032;
   const spacing = vbWidth * 0.036;
@@ -480,15 +517,12 @@ function DoorwayOverlaySvg({
   sh,
   vbWidth,
   highlight,
-  tone = "default",
 }: {
   sh: MapOverlayShape;
   vbWidth: number;
   highlight: boolean;
-  tone?: "default" | "defenseGhost";
 }) {
   const pts = sh.points;
-  const ghost = tone === "defenseGhost";
   const swBase = vbWidth * 0.0038 * (highlight ? 1.2 : 1);
 
   if (pts.length === 0) return null;
@@ -496,32 +530,38 @@ function DoorwayOverlaySvg({
     const p = pts[0]!;
     const r = vbWidth * 0.007;
     if (sh.kind === "breakable_doorway") {
-      const fill = ghost ? "rgb(125,211,252)" : "rgb(234,88,54)";
       return (
-        <circle cx={p.x} cy={p.y} r={r} fill={fill} pointerEvents="none" />
+        <circle
+          cx={p.x}
+          cy={p.y}
+          r={r}
+          fill="rgb(234,88,54)"
+          pointerEvents="none"
+        />
       );
     }
-    const fill = ghost ? "rgb(125,211,252)" : "rgb(99,102,241)";
     return (
-      <circle cx={p.x} cy={p.y} r={r} fill={fill} pointerEvents="none" />
+      <circle
+        cx={p.x}
+        cy={p.y}
+        r={r}
+        fill="rgb(99,102,241)"
+        pointerEvents="none"
+      />
     );
   }
 
   const d = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
 
   if (sh.kind === "breakable_doorway") {
-    const stroke = ghost
-      ? "rgb(56,189,248)"
-      : highlight
-        ? "rgb(254,202,165)"
-        : "rgb(234,88,54)";
+    const stroke = highlight ? "rgb(254,202,165)" : "rgb(234,88,54)";
     return (
       <path
         d={d}
         fill="none"
         stroke={stroke}
-        strokeWidth={swBase * (ghost ? 0.9 : 1)}
-        strokeDasharray={ghost ? "5 4" : "6 4 2 4"}
+        strokeWidth={swBase}
+        strokeDasharray="6 4 2 4"
         strokeLinecap="round"
         strokeLinejoin="round"
         pointerEvents="none"
@@ -530,28 +570,26 @@ function DoorwayOverlaySvg({
   }
 
   const open = sh.door_is_open === true;
-  const stroke = ghost
-    ? "rgb(125,211,252)"
-    : open
-      ? highlight
-        ? "rgb(199,210,254)"
-        : "rgb(129,140,248)"
-      : highlight
-        ? "rgb(199,210,254)"
-        : "rgb(79,70,229)";
-  const dash = open || ghost ? "10 6" : undefined;
+  const stroke = open
+    ? highlight
+      ? "rgb(199,210,254)"
+      : "rgb(129,140,248)"
+    : highlight
+      ? "rgb(199,210,254)"
+      : "rgb(79,70,229)";
+  const dash = open ? "10 6" : undefined;
   const wmul = open ? 0.88 : 1.12;
   return (
     <path
       d={d}
       fill="none"
       stroke={stroke}
-      strokeWidth={swBase * wmul * (ghost ? 0.85 : 1)}
+      strokeWidth={swBase * wmul}
       strokeDasharray={dash}
       strokeLinecap="round"
       strokeLinejoin="round"
       pointerEvents="none"
-      opacity={open && !ghost ? 0.9 : 1}
+      opacity={open ? 0.9 : 1}
     />
   );
 }
@@ -683,13 +721,14 @@ export function MapShapeEditor({
   const [sidebarHoverHoleIndex, setSidebarHoverHoleIndex] = useState<
     number | null
   >(null);
-  /** Cyan defense outline is mirrored from attack; can hide for a cleaner view. */
-  const [showDefensePreview, setShowDefensePreview] = useState(true);
   const [editorMeta, setEditorMeta] = useState<MapEditorMeta>(() =>
     normalizeEditorMeta(initial.editor_meta),
   );
   /** Click map to place spawns/labels; not persisted. */
   const [placeMode, setPlaceMode] = useState<PlaceAnnotationMode>("none");
+  const [sidebarTab, setSidebarTab] = useState<EditorSidebarTab>("map-shape");
+  /** Label selected for editing in Annotation tab (also set by clicking a label on the map). */
+  const [selectedLabelId, setSelectedLabelId] = useState<string | null>(null);
   const [drawShapeMode, setDrawShapeMode] = useState<DrawShapeMode>("polygon");
   /** First click of a two-click circle (outline ring or overlay). */
   const [pendingCircle, setPendingCircle] = useState<
@@ -802,14 +841,6 @@ export function MapShapeEditor({
     ],
   );
 
-  const defensePreviewOverlays = useMemo(
-    () =>
-      overlaysSortedByFloor.map((sh) =>
-        mirrorOverlayForDefensePreview(vbRect, sh),
-      ),
-    [overlaysSortedByFloor, vbRect],
-  );
-
   const outlineAtkD = useMemo(() => {
     const closedHoles = outlineHoles.filter((h) => h.length >= 3);
     if (outlineOuter.length >= 3) {
@@ -817,17 +848,6 @@ export function MapShapeEditor({
     }
     return previewOpenOrClosed(outlineOuter);
   }, [outlineOuter, outlineHoles]);
-
-  const outlineDefD = useMemo(() => {
-    const closedDefHoles = closedDefenseHoleRingsFromAttack(
-      outlineHoles,
-      defHoles,
-    );
-    if (defOuter.length >= 3) {
-      return ringsToPathD(defOuter, closedDefHoles);
-    }
-    return previewOpenOrClosed(defOuter);
-  }, [defOuter, defHoles, outlineHoles]);
 
   useEffect(() => {
     if (!refUrl) {
@@ -886,6 +906,22 @@ export function MapShapeEditor({
     const id = window.setTimeout(() => setSaveToast(null), 4200);
     return () => clearTimeout(id);
   }, [saveToast]);
+
+  useEffect(() => {
+    if (
+      selectedLabelId &&
+      !editorMeta.location_labels.some((l) => l.id === selectedLabelId)
+    ) {
+      setSelectedLabelId(null);
+    }
+  }, [editorMeta.location_labels, selectedLabelId]);
+
+  const selectedLocationLabel = useMemo((): MapLocationLabel | null => {
+    if (!selectedLabelId) return null;
+    return (
+      editorMeta.location_labels.find((l) => l.id === selectedLabelId) ?? null
+    );
+  }, [editorMeta.location_labels, selectedLabelId]);
 
   useEffect(() => {
     if (tool !== "draw" || drawShapeMode !== "circle") {
@@ -1190,6 +1226,8 @@ export function MapShapeEditor({
       }
       if (e.button !== 0) return;
       e.stopPropagation();
+      setSelectedLabelId(id);
+      setSidebarTab("annotation");
       const svg = svgRef.current;
       if (!svg) return;
       const startSvg = clientToSvg(svg, e.clientX, e.clientY);
@@ -1308,12 +1346,13 @@ export function MapShapeEditor({
         }
         if (placeMode === "label") {
           const d = labelPlaceDefaults;
+          const nid = newShapeId();
           setEditorMeta((m) => ({
             ...m,
             location_labels: [
               ...m.location_labels,
               {
-                id: newShapeId(),
+                id: nid,
                 x: p.x,
                 y: p.y,
                 text: "Label",
@@ -1325,6 +1364,8 @@ export function MapShapeEditor({
               },
             ],
           }));
+          setSelectedLabelId(nid);
+          setSidebarTab("annotation");
           setBanner(null);
           return;
         }
@@ -1523,6 +1564,8 @@ export function MapShapeEditor({
       if (e.button !== 0) return;
       e.stopPropagation();
       if (tool !== "edit") return;
+      if (layer.kind === "outline") setSidebarTab("map-shape");
+      else setSidebarTab("objects");
       const svg = svgRef.current;
       if (!svg) return;
       const startSvg = clientToSvg(svg, e.clientX, e.clientY);
@@ -1577,7 +1620,15 @@ export function MapShapeEditor({
       }
       (e.currentTarget as SVGElement).setPointerCapture(e.pointerId);
     },
-    [tool, selection, outlineOuter, outlineHoles, overlays, removeVertexAt],
+    [
+      tool,
+      selection,
+      outlineOuter,
+      outlineHoles,
+      overlays,
+      removeVertexAt,
+      setSidebarTab,
+    ],
   );
 
   const onVertexPointerMove = useCallback(
@@ -1716,6 +1767,7 @@ export function MapShapeEditor({
       ...m,
       active_floor: overlayFloor(sh),
     }));
+    setSidebarTab("objects");
     setActiveLayer(layer);
     setSelection({ kind: "overlay", shapeId: sh.id, indices });
     dragRef.current = {
@@ -1856,6 +1908,7 @@ export function MapShapeEditor({
             }
           : { id, kind, floor, points: [], circle: undefined },
     ]);
+    setSidebarTab("objects");
     setActiveLayer({ kind: "overlay", id });
     setTool("draw");
     setSelection(null);
@@ -2000,6 +2053,7 @@ export function MapShapeEditor({
     setBanner(null);
     const newIndex = outlineHoles.length;
     setOutlineHoles((h) => [...h, []]);
+    setSidebarTab("map-shape");
     setActiveLayer({ kind: "outline", holeIndex: newIndex });
     setTool("draw");
     setSelection(null);
@@ -2170,7 +2224,7 @@ export function MapShapeEditor({
             case "obstacle":
               return "obstacle";
             case "elevation":
-              return "elevation";
+              return "walkable space";
             case "wall":
               return "wall";
             case "grade":
@@ -2199,9 +2253,13 @@ export function MapShapeEditor({
             <h2 className="text-xl font-semibold text-white">{initial.name}</h2>
           </summary>
           <p className="border-t border-violet-800/25 px-3 py-3 text-sm text-violet-200/60">
-            The cyan shape is the horizontal mirror of the purple outline (saved as
-            <code className="text-violet-300/90"> path_def</code>). Cyan also shows a
-            dashed mirror of overlays. Add holes to cut out areas inside the outline.
+            The purple outline saves as{" "}
+            <code className="text-violet-300/90">path_atk</code>; the mirrored defense ring
+            is stored as{" "}
+            <code className="text-violet-300/90">path_def</code>. Use{" "}
+            <strong className="font-medium text-violet-200/80">Swap sides</strong> to flip
+            geometry when you need to trace or edit from the other perspective. Add holes
+            to cut out areas inside the outline.
             Overlays sit in the playable ring (not in holes); they stay clipped as you
             edit. Use <strong className="font-medium text-violet-200/80">
               Invert atk/def meaning
@@ -2213,7 +2271,10 @@ export function MapShapeEditor({
             <strong className="font-medium text-violet-200/80">Upper</strong>{" "}
             to stack two overlapping plan levels (same x/y; upper draws on top).
             Uncheck <strong className="font-medium text-violet-200/80">Dim other floor</strong>{" "}
-            to hide the inactive floor while editing.
+            to hide the inactive floor while editing.{" "}
+            <strong className="font-medium text-violet-200/80">Walkable space</strong>{" "}
+            (elevation) uses warm ground tones on lower and cool sky tones on upper
+            (heaven vs ground-level callouts).
           </p>
         </details>
         <button
@@ -2284,23 +2345,6 @@ export function MapShapeEditor({
                     </span>
                   </>
                 )}
-                <button
-                  type="button"
-                  onClick={() => setShowDefensePreview((v) => !v)}
-                  className="btn-secondary inline-flex shrink-0 items-center gap-1 px-2 py-1"
-                  title={
-                    showDefensePreview
-                      ? "Hide cyan defense preview"
-                      : "Show cyan defense preview"
-                  }
-                >
-                  {showDefensePreview ? (
-                    <Eye className="h-3.5 w-3.5" />
-                  ) : (
-                    <EyeOff className="h-3.5 w-3.5" />
-                  )}
-                  Defense preview
-                </button>
                 <button
                   type="button"
                   onClick={swapAttackDefenseSides}
@@ -2380,11 +2424,6 @@ export function MapShapeEditor({
                   />
                   Dim other floor
                 </label>
-                <span className="shrink-0 whitespace-nowrap text-violet-300/40">
-                  Scroll to zoom. Right-drag to pan when zoomed. Drag the map
-                  panel corner to resize — grows with the layout, with caps on
-                  huge displays.
-                </span>
                 {viewport && (
                   <button
                     type="button"
@@ -2481,130 +2520,6 @@ export function MapShapeEditor({
                 </text>
               ) : null}
 
-              {showDefensePreview && outlineDefD && (
-                <path
-                  d={outlineDefD}
-                  fill="rgba(56,189,248,0.1)"
-                  fillRule={outlineOuter.length >= 3 ? "evenodd" : undefined}
-                  stroke="rgb(56,189,248)"
-                  strokeWidth={vb.width * 0.003}
-                  strokeLinejoin="round"
-                  strokeDasharray="8 6"
-                  pointerEvents="none"
-                />
-              )}
-              {showDefensePreview &&
-                sidebarHoverHoleIndex !== null &&
-                (() => {
-                  const h = defHoles[sidebarHoverHoleIndex];
-                  if (!h || h.length < 3) return null;
-                  const d = previewOpenOrClosed(h);
-                  if (!d) return null;
-                  return (
-                    <path
-                      key={`hole-hover-def-${sidebarHoverHoleIndex}`}
-                      d={d}
-                      fill="rgba(125,211,252,0.2)"
-                      fillRule={h.length >= 3 ? "evenodd" : undefined}
-                      stroke="rgb(224,242,254)"
-                      strokeWidth={vb.width * 0.0042}
-                      strokeLinejoin="round"
-                      pointerEvents="none"
-                    />
-                  );
-                })()}
-              {showDefensePreview &&
-                outlineReady &&
-                defensePreviewOverlays.map((sh) => {
-                  const op = overlayFloorOpacity(sh);
-                  if (op < 0.02) return null;
-                  if (
-                    sh.kind === "breakable_doorway" ||
-                    sh.kind === "toggle_door"
-                  ) {
-                    return (
-                      <g
-                        key={`def-prev-${sh.id}`}
-                        style={{ opacity: op }}
-                        pointerEvents="none"
-                      >
-                        <DoorwayOverlaySvg
-                          sh={sh}
-                          vbWidth={vb.width}
-                          highlight={false}
-                          tone="defenseGhost"
-                        />
-                      </g>
-                    );
-                  }
-                  if (sh.kind === "grade") {
-                    return (
-                      <g
-                        key={`def-prev-${sh.id}`}
-                        style={{ opacity: op }}
-                        pointerEvents="none"
-                      >
-                        <GradeOverlaySvg
-                          sh={sh}
-                          vbWidth={vb.width}
-                          tone="defenseGhost"
-                        />
-                      </g>
-                    );
-                  }
-                  if (isCircleOverlay(sh) && sh.circle) {
-                    const c = sh.circle;
-                    const plant = sh.kind === "plant_site";
-                    return (
-                      <g
-                        key={`def-prev-${sh.id}`}
-                        style={{ opacity: op }}
-                        pointerEvents="none"
-                      >
-                        <circle
-                          cx={c.cx}
-                          cy={c.cy}
-                          r={c.r}
-                          fill={
-                            plant
-                              ? "rgba(255,62,62,0.12)"
-                              : "rgba(56,189,248,0.1)"
-                          }
-                          stroke={plant ? SPAWN_ATK_FILL : "rgb(56,189,248)"}
-                          strokeWidth={vb.width * 0.0025}
-                          strokeDasharray="6 4"
-                          pointerEvents="none"
-                        />
-                      </g>
-                    );
-                  }
-                  const d = previewOverlayStrokePath(sh.kind, sh.points);
-                  if (!d) return null;
-                  const plant = sh.kind === "plant_site";
-                  return (
-                    <g
-                      key={`def-prev-${sh.id}`}
-                      style={{ opacity: op }}
-                      pointerEvents="none"
-                    >
-                      <path
-                        d={d}
-                        fill={
-                          plant
-                            ? "rgba(255,62,62,0.1)"
-                            : "rgba(56,189,248,0.08)"
-                        }
-                        stroke={plant ? SPAWN_ATK_FILL : "rgb(56,189,248)"}
-                        strokeWidth={vb.width * 0.0028}
-                        strokeDasharray={
-                          sh.kind === "plant_site" ? "9 6" : "6 5"
-                        }
-                        strokeLinejoin="round"
-                        pointerEvents="none"
-                      />
-                    </g>
-                  );
-                })}
               {outlineAtkD && (
                 <path
                   d={outlineAtkD}
@@ -2697,7 +2612,11 @@ export function MapShapeEditor({
                     );
                   }
                   if (isCircleOverlay(sh) && sh.circle) {
-                    const poly = overlayPolygonStyleHover(sh.kind, hl);
+                    const poly = overlayPolygonStyleHover(
+                      sh.kind,
+                      hl,
+                      overlayFloor(sh),
+                    );
                     if (!poly) return null;
                     const c = sh.circle;
                     return (
@@ -2716,7 +2635,11 @@ export function MapShapeEditor({
                   }
                   const d = previewOverlayStrokePath(sh.kind, sh.points);
                   if (!d) return null;
-                  const poly = overlayPolygonStyleHover(sh.kind, hl);
+                  const poly = overlayPolygonStyleHover(
+                    sh.kind,
+                    hl,
+                    overlayFloor(sh),
+                  );
                   if (!poly) return null;
                   return (
                     <g key={sh.id} style={{ opacity: op }} pointerEvents="none">
@@ -2757,6 +2680,7 @@ export function MapShapeEditor({
                         fill={overlayPassiveFillHover(
                           sh.kind,
                           sidebarHoverOverlayId === sh.id,
+                          overlayFloor(sh),
                         )}
                         stroke="rgba(255,255,255,0.85)"
                         strokeWidth={passiveVertexStrokeW}
@@ -2873,7 +2797,11 @@ export function MapShapeEditor({
                           cx={p.x}
                           cy={p.y}
                           r={hitRadius}
-                          fill={overlayActiveVertexFill(activeOv.kind, sel)}
+                          fill={overlayActiveVertexFill(
+                            activeOv.kind,
+                            sel,
+                            overlayFloor(activeOv),
+                          )}
                           fillOpacity={tool === "draw" ? 0.35 : 0.95}
                           stroke="white"
                           strokeWidth={vertexStrokeW}
@@ -2907,7 +2835,11 @@ export function MapShapeEditor({
                         cx={p.x}
                         cy={p.y}
                         r={hitRadius}
-                        fill={overlayActiveVertexFill(activeOv.kind, sel)}
+                        fill={overlayActiveVertexFill(
+                          activeOv.kind,
+                          sel,
+                          overlayFloor(activeOv),
+                        )}
                         fillOpacity={tool === "draw" ? 0.35 : 0.95}
                         stroke="white"
                         strokeWidth={vertexStrokeW}
@@ -2934,8 +2866,8 @@ export function MapShapeEditor({
               <g style={{ pointerEvents: "auto" }}>
                 {editorMeta.spawn_markers.map((s) => {
                   const atk = s.side === "atk";
-                  const fill = atk ? SPAWN_ATK_FILL : "rgb(125,211,252)";
-                  const stroke = atk ? SPAWN_ATK_STROKE : "rgb(224,242,254)";
+                  const fill = atk ? SPAWN_ATK_FILL : SPAWN_DEF_FILL;
+                  const stroke = atk ? SPAWN_ATK_STROKE : SPAWN_DEF_STROKE;
                   return (
                     <circle
                       key={`spawn-${s.id}`}
@@ -2961,6 +2893,7 @@ export function MapShapeEditor({
                   );
                 })}
                 {editorMeta.location_labels.map((l) => {
+                  const labelSelected = selectedLabelId === l.id;
                   const fs = labelFontSize * l.size;
                   const pinR = annMarkerR * l.size * 0.55;
                   const strokeOut = fs * 0.08;
@@ -2993,8 +2926,12 @@ export function MapShapeEditor({
                         textAnchor={tp.textAnchor}
                         dominantBaseline={tp.dominantBaseline}
                         fill={fill}
-                        stroke="rgba(12,12,18,0.88)"
-                        strokeWidth={strokeOut}
+                        stroke={
+                          labelSelected
+                            ? "rgb(244,114,182)"
+                            : "rgba(12,12,18,0.88)"
+                        }
+                        strokeWidth={labelSelected ? strokeOut * 2 : strokeOut}
                         paintOrder="stroke fill"
                         style={{
                           fontSize: fs,
@@ -3025,8 +2962,17 @@ export function MapShapeEditor({
                         r={pinR}
                         fill={fill}
                         fillOpacity={0.95}
-                        stroke="rgba(255,255,255,0.92)"
-                        strokeWidth={vertexStrokeW * 0.75 * l.size}
+                        stroke={
+                          labelSelected
+                            ? "rgb(244,114,182)"
+                            : "rgba(255,255,255,0.92)"
+                        }
+                        strokeWidth={
+                          vertexStrokeW *
+                          0.75 *
+                          l.size *
+                          (labelSelected ? 2.1 : 1)
+                        }
                         style={{ cursor: "grab" }}
                         onPointerDown={(e) =>
                           onLabelMarkerPointerDown(e, l.id, { x: l.x, y: l.y })
@@ -3085,6 +3031,51 @@ export function MapShapeEditor({
             </button>
           </div>
 
+          <div className="flex shrink-0 flex-col gap-1.5">
+            <span className="text-[10px] font-medium uppercase tracking-wide text-violet-400/85">
+              Panel
+            </span>
+            <div className="flex gap-1 rounded-lg border border-violet-800/45 bg-slate-950/60 p-0.5">
+              <button
+                type="button"
+                onClick={() => setSidebarTab("map-shape")}
+                className={`min-w-0 flex-1 rounded-md px-2 py-2 text-center text-[11px] font-medium leading-tight sm:text-xs ${
+                  sidebarTab === "map-shape"
+                    ? "bg-violet-600 text-white"
+                    : "text-violet-200/75 hover:bg-violet-950/40 hover:text-white"
+                }`}
+                title="Outline, holes, image & view box"
+              >
+                Map shape
+              </button>
+              <button
+                type="button"
+                onClick={() => setSidebarTab("objects")}
+                className={`min-w-0 flex-1 rounded-md px-2 py-2 text-center text-[11px] font-medium leading-tight sm:text-xs ${
+                  sidebarTab === "objects"
+                    ? "bg-violet-600 text-white"
+                    : "text-violet-200/75 hover:bg-violet-950/40 hover:text-white"
+                }`}
+                title="Overlays: walkable areas, walls, doors, etc."
+              >
+                Objects
+              </button>
+              <button
+                type="button"
+                onClick={() => setSidebarTab("annotation")}
+                className={`min-w-0 flex-1 rounded-md px-2 py-2 text-center text-[11px] font-medium leading-tight sm:text-xs ${
+                  sidebarTab === "annotation"
+                    ? "bg-violet-600 text-white"
+                    : "text-violet-200/75 hover:bg-violet-950/40 hover:text-white"
+                }`}
+                title="Reference image, spawns, labels"
+              >
+                Annotation
+              </button>
+            </div>
+          </div>
+
+          {sidebarTab === "map-shape" && (
           <div>
             <span className="label">Tool</span>
             <div className="mt-2 flex rounded-lg border border-violet-800/50 p-0.5">
@@ -3158,7 +3149,9 @@ export function MapShapeEditor({
               </div>
             )}
           </div>
+          )}
 
+          {sidebarTab === "annotation" && (
           <div className="rounded-lg border border-teal-800/35 bg-slate-900/40 p-3">
             <span className="label">Map annotations</span>
             <p className="mt-1 text-xs text-violet-300/55">
@@ -3386,11 +3379,11 @@ export function MapShapeEditor({
                       }
                       className={`inline-flex items-center gap-1 rounded-md border px-2 py-1.5 text-xs font-medium ${
                         placeMode === "spawn-def"
-                          ? "border-sky-500/55 bg-sky-950/40 text-white"
+                          ? "border-blue-600/60 bg-blue-950/45 text-white"
                           : "border-violet-800/45 text-violet-200/75 hover:bg-violet-950/35"
                       }`}
                     >
-                      <Shield className="h-3.5 w-3.5" />
+                      <Shield className="h-3.5 w-3.5 text-blue-400" />
                       Def spawn
                     </button>
                     <button
@@ -3438,7 +3431,7 @@ export function MapShapeEditor({
                             {s.side === "atk" ? (
                               <Swords className="h-3.5 w-3.5 text-red-400" />
                             ) : (
-                              <Shield className="h-3.5 w-3.5 text-sky-300" />
+                              <Shield className="h-3.5 w-3.5 text-blue-400" />
                             )}
                             {s.side === "atk" ? "Attack" : "Defend"}
                           </span>
@@ -3464,232 +3457,269 @@ export function MapShapeEditor({
                 </div>
               </details>
 
-              <details
-                className="overflow-hidden rounded-lg border border-fuchsia-900/35 bg-slate-950/30 [&[open]>summary_.chevron-ann]:rotate-90"
-              >
-                <summary className="flex cursor-pointer list-none items-center gap-2 px-2 py-2 text-sm font-medium text-fuchsia-100/95 hover:bg-fuchsia-950/25 [&::-webkit-details-marker]:hidden">
-                  <ChevronRight className="chevron-ann h-4 w-4 shrink-0 text-fuchsia-400 transition-transform" />
+              <div className="overflow-hidden rounded-lg border border-fuchsia-900/35 bg-slate-950/30">
+                <div className="flex items-center gap-2 border-b border-fuchsia-900/25 px-2 py-2">
                   <MapPin className="h-4 w-4 shrink-0 text-fuchsia-300" />
-                  <span className="min-w-0 flex-1">Location labels</span>
-                  <span className="font-mono text-xs font-normal text-violet-500">
+                  <span className="min-w-0 flex-1 text-sm font-medium text-fuchsia-100/95">
+                    Label (selection)
+                  </span>
+                  <span className="font-mono text-xs text-violet-500">
                     {editorMeta.location_labels.length}
                   </span>
-                </summary>
-                <div className="space-y-2 border-t border-fuchsia-900/25 px-2 py-2">
+                </div>
+                <div className="space-y-2 px-2 py-2">
+                  <p className="text-xs text-violet-300/55">
+                    Click a label on the map to select it, or pick one below.
+                    Only the current selection is edited here.
+                  </p>
+                  {editorMeta.location_labels.length > 0 && (
+                    <label className="block text-xs text-violet-300/60">
+                      Jump to label
+                      <select
+                        className="input-field mt-1 w-full py-1.5 text-xs"
+                        value={selectedLabelId ?? ""}
+                        onChange={(e) =>
+                          setSelectedLabelId(e.target.value || null)
+                        }
+                      >
+                        <option value="">— Choose —</option>
+                        {editorMeta.location_labels.map((lb) => (
+                          <option key={lb.id} value={lb.id}>
+                            {(lb.text || "Label").slice(0, 56)}
+                            {(lb.text || "").length > 56 ? "…" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                   {editorMeta.location_labels.length === 0 ? (
                     <p className="text-xs text-violet-400/70">
                       None yet — use Place on map → Label.
                     </p>
-                  ) : null}
-                {editorMeta.location_labels.map((l) => (
-                  <div
-                    key={l.id}
-                    className="flex flex-col gap-2 rounded border border-fuchsia-900/35 bg-slate-950/40 p-2"
-                  >
-                    <div className="flex items-center gap-1">
-                      <MapPin className="h-3.5 w-3.5 shrink-0 text-fuchsia-300/90" />
-                      <input
-                        type="text"
-                        value={l.text}
-                        onChange={(e) =>
-                          setEditorMeta((m) => ({
-                            ...m,
-                            location_labels: m.location_labels.map((x) =>
-                              x.id === l.id
-                                ? { ...x, text: e.target.value }
-                                : x,
-                            ),
-                          }))
-                        }
-                        className="input-field min-w-0 flex-1 py-1 text-xs"
-                        aria-label="Label text"
-                      />
-                      <button
-                        type="button"
-                        title="Remove label"
-                        onClick={() =>
-                          setEditorMeta((m) => ({
-                            ...m,
-                            location_labels: m.location_labels.filter(
-                              (x) => x.id !== l.id,
-                            ),
-                          }))
-                        }
-                        className="shrink-0 rounded p-1 text-fuchsia-300 hover:bg-fuchsia-950/40"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setEditorMeta((m) => ({
-                            ...m,
-                            location_labels: m.location_labels.map((x) =>
-                              x.id === l.id ? { ...x, style: "pin" } : x,
-                            ),
-                          }))
-                        }
-                        className={`rounded-md border px-2 py-0.5 text-[11px] font-medium ${
-                          l.style === "pin"
-                            ? "border-fuchsia-500/55 bg-fuchsia-950/40 text-white"
-                            : "border-violet-800/45 text-violet-200/75"
-                        }`}
-                      >
-                        Pin
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setEditorMeta((m) => ({
-                            ...m,
-                            location_labels: m.location_labels.map((x) =>
-                              x.id === l.id ? { ...x, style: "text" } : x,
-                            ),
-                          }))
-                        }
-                        className={`rounded-md border px-2 py-0.5 text-[11px] font-medium ${
-                          l.style === "text"
-                            ? "border-fuchsia-500/55 bg-fuchsia-950/40 text-white"
-                            : "border-violet-800/45 text-violet-200/75"
-                        }`}
-                      >
-                        Text
-                      </button>
-                    </div>
-                    <div>
-                      <p className="text-[11px] text-violet-300/60">
-                        Text from point
-                      </p>
-                      <div className="mt-1 grid grid-cols-4 gap-1">
-                        {LABEL_ANCHOR_OPTIONS.map(({ value, title, Icon }) => (
-                          <button
-                            key={`${l.id}-${value}`}
-                            type="button"
-                            title={title}
-                            onClick={() =>
-                              setEditorMeta((m) => ({
-                                ...m,
-                                location_labels: m.location_labels.map((x) =>
-                                  x.id === l.id
-                                    ? { ...x, text_anchor: value }
-                                    : x,
-                                ),
-                              }))
-                            }
-                            className={`inline-flex items-center justify-center rounded border p-1 ${
-                              l.text_anchor === value
-                                ? "border-fuchsia-500/55 bg-fuchsia-950/40 text-white"
-                                : "border-violet-800/45 text-violet-200/75 hover:bg-violet-950/35"
-                            }`}
-                          >
-                            <Icon className="h-3 w-3" aria-hidden />
-                            <span className="sr-only">{title}</span>
-                          </button>
-                        ))}
+                  ) : !selectedLocationLabel ? (
+                    <p className="text-xs text-violet-400/70">
+                      Select a label on the map or from the list.
+                    </p>
+                  ) : (
+                    <div
+                      key={selectedLocationLabel.id}
+                      className="flex flex-col gap-2 rounded border border-fuchsia-900/35 bg-slate-950/40 p-2"
+                    >
+                      <div className="flex items-center gap-1">
+                        <MapPin className="h-3.5 w-3.5 shrink-0 text-fuchsia-300/90" />
+                        <input
+                          type="text"
+                          value={selectedLocationLabel.text}
+                          onChange={(e) =>
+                            setEditorMeta((m) => ({
+                              ...m,
+                              location_labels: m.location_labels.map((x) =>
+                                x.id === selectedLocationLabel.id
+                                  ? { ...x, text: e.target.value }
+                                  : x,
+                              ),
+                            }))
+                          }
+                          className="input-field min-w-0 flex-1 py-1 text-xs"
+                          aria-label="Label text"
+                        />
+                        <button
+                          type="button"
+                          title="Remove label"
+                          onClick={() => {
+                            const rid = selectedLocationLabel.id;
+                            setEditorMeta((m) => ({
+                              ...m,
+                              location_labels: m.location_labels.filter(
+                                (x) => x.id !== rid,
+                              ),
+                            }));
+                            setSelectedLabelId(null);
+                          }}
+                          className="shrink-0 rounded p-1 text-fuchsia-300 hover:bg-fuchsia-950/40"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEditorMeta((m) => ({
+                              ...m,
+                              location_labels: m.location_labels.map((x) =>
+                                x.id === selectedLocationLabel.id
+                                  ? { ...x, style: "pin" }
+                                  : x,
+                              ),
+                            }))
+                          }
+                          className={`rounded-md border px-2 py-0.5 text-[11px] font-medium ${
+                            selectedLocationLabel.style === "pin"
+                              ? "border-fuchsia-500/55 bg-fuchsia-950/40 text-white"
+                              : "border-violet-800/45 text-violet-200/75"
+                          }`}
+                        >
+                          Pin
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEditorMeta((m) => ({
+                              ...m,
+                              location_labels: m.location_labels.map((x) =>
+                                x.id === selectedLocationLabel.id
+                                  ? { ...x, style: "text" }
+                                  : x,
+                              ),
+                            }))
+                          }
+                          className={`rounded-md border px-2 py-0.5 text-[11px] font-medium ${
+                            selectedLocationLabel.style === "text"
+                              ? "border-fuchsia-500/55 bg-fuchsia-950/40 text-white"
+                              : "border-violet-800/45 text-violet-200/75"
+                          }`}
+                        >
+                          Text
+                        </button>
+                      </div>
+                      <div>
+                        <p className="text-[11px] text-violet-300/60">
+                          Text from point
+                        </p>
+                        <div className="mt-1 grid grid-cols-4 gap-1">
+                          {LABEL_ANCHOR_OPTIONS.map(({ value, title, Icon }) => (
+                            <button
+                              key={`${selectedLocationLabel.id}-${value}`}
+                              type="button"
+                              title={title}
+                              onClick={() =>
+                                setEditorMeta((m) => ({
+                                  ...m,
+                                  location_labels: m.location_labels.map(
+                                    (x) =>
+                                      x.id === selectedLocationLabel.id
+                                        ? { ...x, text_anchor: value }
+                                        : x,
+                                  ),
+                                }))
+                              }
+                              className={`inline-flex items-center justify-center rounded border p-1 ${
+                                selectedLocationLabel.text_anchor === value
+                                  ? "border-fuchsia-500/55 bg-fuchsia-950/40 text-white"
+                                  : "border-violet-800/45 text-violet-200/75 hover:bg-violet-950/35"
+                              }`}
+                            >
+                              <Icon className="h-3 w-3" aria-hidden />
+                              <span className="sr-only">{title}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-[11px] text-violet-300/60">
+                          Text rotation
+                        </p>
+                        <div className="mt-1 grid grid-cols-4 gap-1">
+                          {LABEL_ROTATION_PRESETS.map(({ deg, short }) => (
+                            <button
+                              key={`${selectedLocationLabel.id}-rot-${deg}`}
+                              type="button"
+                              title={`Rotate label ${short}`}
+                              onClick={() =>
+                                setEditorMeta((m) => ({
+                                  ...m,
+                                  location_labels: m.location_labels.map(
+                                    (x) =>
+                                      x.id === selectedLocationLabel.id
+                                        ? { ...x, text_rotation_deg: deg }
+                                        : x,
+                                  ),
+                                }))
+                              }
+                              className={`rounded border px-0.5 py-0.5 text-center text-[10px] font-medium tabular-nums ${
+                                selectedLocationLabel.text_rotation_deg === deg
+                                  ? "border-fuchsia-500/55 bg-fuchsia-950/40 text-white"
+                                  : "border-violet-800/45 text-violet-200/75 hover:bg-violet-950/35"
+                              }`}
+                            >
+                              {short}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-violet-300/60">
+                          Size ({selectedLocationLabel.size.toFixed(2)}×)
+                        </label>
+                        <input
+                          type="range"
+                          min={0.35}
+                          max={3}
+                          step={0.05}
+                          value={selectedLocationLabel.size}
+                          onChange={(e) =>
+                            setEditorMeta((m) => ({
+                              ...m,
+                              location_labels: m.location_labels.map((x) =>
+                                x.id === selectedLocationLabel.id
+                                  ? { ...x, size: Number(e.target.value) }
+                                  : x,
+                              ),
+                            }))
+                          }
+                          className="mt-0.5 w-full accent-fuchsia-500"
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          type="color"
+                          aria-label="Label color"
+                          value={colorInputHex(selectedLocationLabel.color)}
+                          onChange={(e) =>
+                            setEditorMeta((m) => ({
+                              ...m,
+                              location_labels: m.location_labels.map((x) =>
+                                x.id === selectedLocationLabel.id
+                                  ? { ...x, color: e.target.value }
+                                  : x,
+                              ),
+                            }))
+                          }
+                          className="h-7 w-9 shrink-0 cursor-pointer rounded border border-violet-700/50 bg-transparent p-0"
+                        />
+                        <input
+                          type="text"
+                          value={selectedLocationLabel.color}
+                          onChange={(e) =>
+                            setEditorMeta((m) => ({
+                              ...m,
+                              location_labels: m.location_labels.map((x) =>
+                                x.id === selectedLocationLabel.id
+                                  ? { ...x, color: e.target.value }
+                                  : x,
+                              ),
+                            }))
+                          }
+                          className="input-field min-w-0 flex-1 py-1 font-mono text-[11px]"
+                        />
                       </div>
                     </div>
-                    <div>
-                      <p className="text-[11px] text-violet-300/60">
-                        Text rotation
-                      </p>
-                      <div className="mt-1 grid grid-cols-4 gap-1">
-                        {LABEL_ROTATION_PRESETS.map(({ deg, short }) => (
-                          <button
-                            key={`${l.id}-rot-${deg}`}
-                            type="button"
-                            title={`Rotate label ${short}`}
-                            onClick={() =>
-                              setEditorMeta((m) => ({
-                                ...m,
-                                location_labels: m.location_labels.map((x) =>
-                                  x.id === l.id
-                                    ? { ...x, text_rotation_deg: deg }
-                                    : x,
-                                ),
-                              }))
-                            }
-                            className={`rounded border px-0.5 py-0.5 text-center text-[10px] font-medium tabular-nums ${
-                              l.text_rotation_deg === deg
-                                ? "border-fuchsia-500/55 bg-fuchsia-950/40 text-white"
-                                : "border-violet-800/45 text-violet-200/75 hover:bg-violet-950/35"
-                            }`}
-                          >
-                            {short}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-violet-300/60">
-                        Size ({l.size.toFixed(2)}×)
-                      </label>
-                      <input
-                        type="range"
-                        min={0.35}
-                        max={3}
-                        step={0.05}
-                        value={l.size}
-                        onChange={(e) =>
-                          setEditorMeta((m) => ({
-                            ...m,
-                            location_labels: m.location_labels.map((x) =>
-                              x.id === l.id
-                                ? { ...x, size: Number(e.target.value) }
-                                : x,
-                            ),
-                          }))
-                        }
-                        className="mt-0.5 w-full accent-fuchsia-500"
-                      />
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <input
-                        type="color"
-                        aria-label="Label color"
-                        value={colorInputHex(l.color)}
-                        onChange={(e) =>
-                          setEditorMeta((m) => ({
-                            ...m,
-                            location_labels: m.location_labels.map((x) =>
-                              x.id === l.id
-                                ? { ...x, color: e.target.value }
-                                : x,
-                            ),
-                          }))
-                        }
-                        className="h-7 w-9 shrink-0 cursor-pointer rounded border border-violet-700/50 bg-transparent p-0"
-                      />
-                      <input
-                        type="text"
-                        value={l.color}
-                        onChange={(e) =>
-                          setEditorMeta((m) => ({
-                            ...m,
-                            location_labels: m.location_labels.map((x) =>
-                              x.id === l.id
-                                ? { ...x, color: e.target.value }
-                                : x,
-                            ),
-                          }))
-                        }
-                        className="input-field min-w-0 flex-1 py-1 font-mono text-[11px]"
-                      />
-                    </div>
-                  </div>
-                ))}
+                  )}
                 </div>
-              </details>
+              </div>
             </div>
           </div>
+          )}
 
+          {sidebarTab === "map-shape" && (
           <div>
-            <span className="label">Active layer</span>
+            <span className="label">Map outline</span>
             <div className="mt-2 space-y-1">
               <button
                 type="button"
                 onClick={() => {
+                  setSidebarTab("map-shape");
                   setActiveLayer({ kind: "outline", holeIndex: null });
                   setSelection(null);
                 }}
@@ -3737,6 +3767,7 @@ export function MapShapeEditor({
                       <button
                         type="button"
                         onClick={() => {
+                          setSidebarTab("map-shape");
                           setActiveLayer({ kind: "outline", holeIndex: hi });
                           setSelection(null);
                         }}
@@ -3781,6 +3812,14 @@ export function MapShapeEditor({
                   </button>
                 </div>
               </details>
+            </div>
+          </div>
+          )}
+
+          {sidebarTab === "objects" && (
+          <div>
+            <span className="label">Overlay layers</span>
+            <div className="mt-2 space-y-1">
               <div
                 className="space-y-2"
                 onMouseLeave={() => {
@@ -3801,7 +3840,7 @@ export function MapShapeEditor({
                     kind === "obstacle" ? (
                       <Octagon className="h-4 w-4 shrink-0 text-amber-300" />
                     ) : kind === "elevation" ? (
-                      <Mountain className="h-4 w-4 shrink-0 text-emerald-300" />
+                      <Mountain className="h-4 w-4 shrink-0 text-sky-300" />
                     ) : kind === "wall" ? (
                       <BrickWall className="h-4 w-4 shrink-0 text-slate-300" />
                     ) : kind === "plant_site" ? (
@@ -3817,7 +3856,7 @@ export function MapShapeEditor({
                     kind === "obstacle"
                       ? "Obstacles"
                       : kind === "elevation"
-                        ? "Elevation"
+                        ? "Walkable space"
                         : kind === "wall"
                           ? "Walls"
                           : kind === "plant_site"
@@ -3854,7 +3893,9 @@ export function MapShapeEditor({
                                 : activeOv && sh.kind === "plant_site"
                                   ? "rounded-lg border border-red-500/40 bg-red-950/25 p-1"
                                   : activeOv && sh.kind === "elevation"
-                                    ? "rounded-lg border border-emerald-500/35 bg-emerald-950/20 p-1"
+                                    ? overlayFloor(sh) === "upper"
+                                      ? "rounded-lg border border-sky-500/45 bg-sky-950/30 p-1"
+                                      : "rounded-lg border border-amber-600/45 bg-amber-950/30 p-1"
                                     : activeOv &&
                                         sh.kind === "breakable_doorway"
                                     ? "rounded-lg border border-orange-500/40 bg-orange-950/25 p-1"
@@ -3875,6 +3916,7 @@ export function MapShapeEditor({
                               <button
                                 type="button"
                                 onClick={() => {
+                                  setSidebarTab("objects");
                                   setEditorMeta((m) => ({
                                     ...m,
                                     active_floor: overlayFloor(sh),
@@ -3893,11 +3935,21 @@ export function MapShapeEditor({
                                   #{idx + 1}
                                 </span>
                                 <span
-                                  className="shrink-0 rounded border border-violet-600/45 px-1 font-mono text-[10px] uppercase text-violet-300/85"
+                                  className={
+                                    sh.kind === "elevation"
+                                      ? overlayFloor(sh) === "upper"
+                                        ? "shrink-0 rounded border border-sky-500/50 px-1 font-mono text-[10px] uppercase text-sky-200/90"
+                                        : "shrink-0 rounded border border-amber-600/50 px-1 font-mono text-[10px] uppercase text-amber-200/90"
+                                      : "shrink-0 rounded border border-violet-600/45 px-1 font-mono text-[10px] uppercase text-violet-300/85"
+                                  }
                                   title={
                                     overlayFloor(sh) === "upper"
-                                      ? "Upper floor (drawn above lower in this view)"
-                                      : "Lower floor"
+                                      ? sh.kind === "elevation"
+                                        ? "Upper walkable (heaven) — cool sky tones on map"
+                                        : "Upper floor (drawn above lower in this view)"
+                                      : sh.kind === "elevation"
+                                        ? "Lower walkable (ground) — warm tones on map"
+                                        : "Lower floor"
                                   }
                                 >
                                   {overlayFloor(sh) === "upper" ? "U" : "L"}
@@ -3946,7 +3998,7 @@ export function MapShapeEditor({
                 disabled={!outlineReady}
                 title={
                   outlineReady
-                    ? "Add an elevation polygon"
+                    ? "Walkable footprint on the active floor: lower = warm ground, upper = cool sky (heaven/hell style). Uses Lower/Upper toggles."
                     : "Define the map outline first"
                 }
                 className="btn-secondary inline-flex items-center gap-1 text-xs disabled:opacity-40"
@@ -4085,8 +4137,10 @@ export function MapShapeEditor({
               </p>
             )}
           </div>
+          )}
 
-          {tool === "edit" && (
+          {tool === "edit" &&
+            (sidebarTab === "map-shape" || sidebarTab === "objects") && (
             <div className="space-y-2 rounded-lg border border-slate-700/50 bg-slate-950/60 p-3">
               <span className="label flex items-center gap-1">
                 <BoxSelect className="h-3.5 w-3.5" />
@@ -4137,6 +4191,8 @@ export function MapShapeEditor({
             </div>
           )}
 
+          {(sidebarTab === "map-shape" || sidebarTab === "objects") && (
+            <>
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -4167,7 +4223,11 @@ export function MapShapeEditor({
             </strong>{" "}
             · {activeCount} pts
           </p>
+            </>
+          )}
 
+          {sidebarTab === "map-shape" && (
+          <>
           <div className="border-t border-violet-800/40 pt-4">
             <span className="label">Image transform</span>
             <label className="mt-2 block text-xs text-violet-300/55">
@@ -4229,6 +4289,8 @@ export function MapShapeEditor({
               placeholder="0 0 1000 1000"
             />
           </div>
+          </>
+          )}
         </aside>
       </div>
 

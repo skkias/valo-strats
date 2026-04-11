@@ -3,6 +3,12 @@
 :root {
   --background: #0b0618;
   --foreground: #f5f3ff;
+  /* Scrollbars: Firefox (scrollbar-color) + IE/Edge legacy hint; WebKit uses vars below */
+  --scrollbar-track: rgba(30, 27, 75, 0.75);
+  --scrollbar-thumb: rgba(124, 58, 237, 0.42);
+  --scrollbar-thumb-hover: rgba(167, 139, 250, 0.65);
+  --scrollbar-thumb-active: rgba(196, 181, 253, 0.75);
+  --scrollbar-corner: #0b0618;
 }
 
 @theme inline {
@@ -34,6 +40,53 @@ body {
       transparent 58%
     );
   background-attachment: fixed;
+}
+
+/**
+ * Custom scrollbars (theme-aligned):
+ * - Firefox: scrollbar-width + scrollbar-color (standard CSS Scrollbars Module)
+ * - Chromium, Safari, Opera, Edge, Brave, Arc, etc.: ::-webkit-scrollbar*
+ * - Legacy Edge / IE: -ms-overflow-style only affects overlay mode, not colors
+ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar {
+  width: 11px;
+  height: 11px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 9999px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background-color: var(--scrollbar-thumb-active);
+}
+
+*::-webkit-scrollbar-corner {
+  background: var(--scrollbar-corner);
+}
+
+/* Optional: hide stray arrow buttons where WebKit draws them */
+*::-webkit-scrollbar-button {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 @layer components {
