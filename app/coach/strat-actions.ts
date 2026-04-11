@@ -79,16 +79,21 @@ async function prepareStratRow(
 
 export async function createStratAction(
   payload: StratPayload,
-): Promise<{ error: string | null }> {
+): Promise<{ error: string | null; strat?: Strat }> {
   try {
     await assertCoachGate();
     const supabase = createServiceSupabaseClient();
     const { row, error } = await prepareStratRow(supabase, payload);
     if (error) return { error };
-    const { error: ins } = await supabase.from("strats").insert(row);
+    const { data, error: ins } = await supabase
+      .from("strats")
+      .insert(row)
+      .select("*")
+      .single();
     if (ins) return { error: ins.message };
     revalidatePath("/");
-    return { error: null };
+    const strat = normalizeStratRow(data as Strat & { map_id?: string | null });
+    return { error: null, strat };
   } catch (e) {
     return {
       error: e instanceof Error ? e.message : "Failed to create strat",

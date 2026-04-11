@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  forwardRef,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { forwardRef, useMemo, useState, type ReactNode } from "react";
 import type {
   GameMap,
   MapFloorId,
@@ -14,7 +8,6 @@ import type {
   MapOverlayShape,
 } from "@/types/catalog";
 import type { StratSide } from "@/types/strat";
-import { defaultMapTransform } from "@/lib/map-transform";
 import { mapLabelTextSvgProps } from "@/lib/map-label-layout";
 import {
   circleToGradeClosedPoints,
@@ -258,7 +251,6 @@ function DoorwayOverlaySvg({
 }
 
 export type StratMapLayerVisibility = {
-  referenceImage: boolean;
   labels: boolean;
   spawnAtk: boolean;
   spawnDef: boolean;
@@ -274,7 +266,6 @@ export type StratMapLayerVisibility = {
 };
 
 const DEFAULT_VISIBILITY: StratMapLayerVisibility = {
-  referenceImage: true,
   labels: true,
   spawnAtk: true,
   spawnDef: true,
@@ -321,43 +312,13 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
   ) {
   const [vis, setVis] = useState<StratMapLayerVisibility>(DEFAULT_VISIBILITY);
   const effectiveVis = showLayerToggles ? vis : DEFAULT_VISIBILITY;
-  const [imgDims, setImgDims] = useState<{ w: number; h: number } | null>(null);
 
   const { vb, overlays, spawn_markers, location_labels } = useMemo(
     () => stratMapDisplayData(gameMap, side),
     [gameMap, side],
   );
 
-  const transform = gameMap.image_transform ?? defaultMapTransform();
-  const refUrl = gameMap.reference_image_url;
-  const showRef = Boolean(refUrl) && effectiveVis.referenceImage;
-
-  useEffect(() => {
-    if (!refUrl) {
-      queueMicrotask(() => setImgDims(null));
-      return;
-    }
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () =>
-      setImgDims({ w: img.naturalWidth, h: img.naturalHeight });
-    img.onerror = () => setImgDims({ w: 1000, h: 1000 });
-    img.src = refUrl;
-  }, [refUrl]);
-
   const vbStr = `${vb.minX} ${vb.minY} ${vb.width} ${vb.height}`;
-
-  const imageLayout = useMemo(() => {
-    const nw = imgDims?.w ?? vb.width;
-    const nh = imgDims?.h ?? vb.height;
-    const fit = Math.min(vb.width / nw, vb.height / nh);
-    const s = fit * transform.scale;
-    const drawW = nw * s;
-    const drawH = nh * s;
-    const x = (vb.width - drawW) / 2 + transform.tx;
-    const y = (vb.height - drawH) / 2 + transform.ty;
-    return { x, y, w: drawW, h: drawH };
-  }, [imgDims, transform, vb]);
 
   const overlaysSorted = useMemo(() => {
     return [...overlays].sort((a, b) => {
@@ -395,7 +356,6 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
     <div className="space-y-3">
       {showLayerToggles ? (
         <div className="flex flex-wrap gap-2">
-          {toggleRow("referenceImage", "Reference image")}
           {toggleRow("labels", "Labels")}
           {toggleRow("spawnAtk", "Spawns · Attack")}
           {toggleRow("spawnDef", "Spawns · Defense")}
@@ -442,18 +402,6 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
             height={vb.height}
             fill="rgb(15,23,42)"
           />
-
-          {showRef && refUrl ? (
-            <image
-              href={refUrl}
-              x={imageLayout.x}
-              y={imageLayout.y}
-              width={imageLayout.w}
-              height={imageLayout.h}
-              preserveAspectRatio="none"
-              opacity={0.92}
-            />
-          ) : null}
 
           <g style={{ pointerEvents: "none" }}>
             {overlaysSorted.map((sh) => {
@@ -623,7 +571,8 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
         </svg>
       </div>
       <p className="text-[11px] leading-relaxed text-violet-400/45">
-        Territory outline and cutouts are omitted here. Edit vectors on{" "}
+        Reference art is map-editor only and never shown in strats. Territory
+        outline and cutouts are omitted here. Edit vectors on{" "}
         <a
           href={`/coach/maps/${gameMap.id}`}
           className="text-violet-300/80 underline underline-offset-2 hover:text-violet-200"

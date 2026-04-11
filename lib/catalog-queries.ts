@@ -1,5 +1,6 @@
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 import type { Agent, GameMap } from "@/types/catalog";
+import { normalizeAgentAbilitiesBlueprint } from "@/lib/agent-abilities-normalize";
 import { normalizeMapTransform } from "@/lib/map-transform";
 import { normalizeEditorMeta } from "@/lib/map-editor-meta";
 import { normalizeExtraPaths } from "@/lib/map-extra-paths";
@@ -31,6 +32,23 @@ export async function listMaps(): Promise<GameMap[]> {
       editor_meta: normalizeEditorMeta(r.editor_meta),
     };
   });
+}
+
+export async function getAgentBySlug(slug: string): Promise<Agent | null> {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("agents")
+    .select("*")
+    .eq("slug", slug)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  const r = data as Record<string, unknown>;
+  const rawBp = r.abilities_blueprint ?? r.abilitiesBlueprint;
+  return {
+    ...(data as Agent),
+    abilities_blueprint: normalizeAgentAbilitiesBlueprint(rawBp),
+  };
 }
 
 export async function getMapById(id: string): Promise<GameMap | null> {

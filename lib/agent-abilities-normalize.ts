@@ -1,0 +1,211 @@
+import type {
+  AgentAbilityBlueprint,
+  AgentAbilityGeometry,
+  AgentAbilityShapeKind,
+  AgentAbilitySlot,
+} from "@/types/agent-ability";
+import type { MapPoint } from "@/lib/map-path";
+
+const SLOTS: AgentAbilitySlot[] = ["q", "e", "c", "x"];
+
+const SHAPE_KINDS: AgentAbilityShapeKind[] = [
+  "point",
+  "circle",
+  "ray",
+  "cone",
+  "polyline",
+  "polygon",
+  "rectangle",
+  "arc",
+];
+
+const CANVAS = 1000;
+
+function clamp(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(CANVAS, Math.max(0, n));
+}
+
+function clampPoint(p: MapPoint): MapPoint {
+  return { x: clamp(p.x), y: clamp(p.y) };
+}
+
+function newId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `ab-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function normalizeSlot(raw: unknown): AgentAbilitySlot {
+  return typeof raw === "string" && SLOTS.includes(raw as AgentAbilitySlot)
+    ? (raw as AgentAbilitySlot)
+    : "q";
+}
+
+function normalizeShapeKind(raw: unknown): AgentAbilityShapeKind {
+  return typeof raw === "string" &&
+    SHAPE_KINDS.includes(raw as AgentAbilityShapeKind)
+    ? (raw as AgentAbilityShapeKind)
+    : "point";
+}
+
+function normalizeColor(raw: unknown): string {
+  if (typeof raw === "string" && raw.trim()) return raw.trim();
+  return "#a78bfa";
+}
+
+function normalizePoints(raw: unknown): MapPoint[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((p) => {
+      if (!p || typeof p !== "object") return null;
+      const o = p as Record<string, unknown>;
+      const x = typeof o.x === "number" ? clamp(o.x) : Number(o.x);
+      const y = typeof o.y === "number" ? clamp(o.y) : Number(o.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+      return clampPoint({ x, y });
+    })
+    .filter((p): p is MapPoint => p != null);
+}
+
+function normalizeGeometry(
+  shapeKind: AgentAbilityShapeKind,
+  raw: unknown,
+): AgentAbilityGeometry | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const k = o.kind;
+
+  if (k === "point" && shapeKind === "point") {
+    const x = clamp(Number(o.x));
+    const y = clamp(Number(o.y));
+    return { kind: "point", x, y };
+  }
+  if (k === "circle" && shapeKind === "circle") {
+    return {
+      kind: "circle",
+      cx: clamp(Number(o.cx)),
+      cy: clamp(Number(o.cy)),
+      r: Math.min(500, Math.max(1, Number(o.r) || 1)),
+    };
+  }
+  if (k === "ray" && shapeKind === "ray") {
+    return {
+      kind: "ray",
+      x1: clamp(Number(o.x1)),
+      y1: clamp(Number(o.y1)),
+      x2: clamp(Number(o.x2)),
+      y2: clamp(Number(o.y2)),
+    };
+  }
+  if (k === "cone" && shapeKind === "cone") {
+    return {
+      kind: "cone",
+      ox: clamp(Number(o.ox)),
+      oy: clamp(Number(o.oy)),
+      lx: clamp(Number(o.lx)),
+      ly: clamp(Number(o.ly)),
+      rx: clamp(Number(o.rx)),
+      ry: clamp(Number(o.ry)),
+    };
+  }
+  if (k === "polyline" && shapeKind === "polyline") {
+    const pts = normalizePoints(o.points);
+    if (pts.length < 2) return null;
+    return { kind: "polyline", points: pts };
+  }
+  if (k === "polygon" && shapeKind === "polygon") {
+    const pts = normalizePoints(o.points);
+    if (pts.length < 3) return null;
+    return { kind: "polygon", points: pts };
+  }
+  if (k === "rectangle" && shapeKind === "rectangle") {
+    const x = clamp(Number(o.x));
+    const y = clamp(Number(o.y));
+    const w = Math.min(CANVAS, Math.max(0, Number(o.w) || 0));
+    const h = Math.min(CANVAS, Math.max(0, Number(o.h) || 0));
+    const rotationDeg =
+      typeof o.rotationDeg === "number" && Number.isFinite(o.rotationDeg)
+        ? o.rotationDeg
+        : undefined;
+    return { kind: "rectangle", x, y, w, h, rotationDeg };
+  }
+  if (k === "arc" && shapeKind === "arc") {
+    return {
+      kind: "arc",
+      cx: clamp(Number(o.cx)),
+      cy: clamp(Number(o.cy)),
+      r: Math.min(500, Math.max(1, Number(o.r) || 1)),
+      startDeg: Number.isFinite(Number(o.startDeg)) ? Number(o.startDeg) : 0,
+      sweepDeg: Number.isFinite(Number(o.sweepDeg)) ? Number(o.sweepDeg) : 90,
+    };
+  }
+  return null;
+}
+
+function defaultGeometry(kind: AgentAbilityShapeKind): AgentAbilityGeometry {
+  switch (kind) {
+    case "point":
+      return { kind: "point", x: 500, y: 500 };
+    case "circle":
+      return { kind: "circle", cx: 500, cy: 500, r: 80 };
+    case "ray":
+      return { kind: "ray", x1: 400, y1: 500, x2: 600, y2: 500 };
+    case "cone":
+      return { kind: "cone", ox: 500, oy: 600, lx: 400, ly: 400, rx: 600, ry: 400 };
+    case "polyline":
+      return {
+        kind: "polyline",
+        points: [
+          { x: 400, y: 500 },
+          { x: 600, y: 500 },
+        ],
+      };
+    case "polygon":
+      return {
+        kind: "polygon",
+        points: [
+          { x: 500, y: 400 },
+          { x: 400, y: 600 },
+          { x: 600, y: 600 },
+        ],
+      };
+    case "rectangle":
+      return { kind: "rectangle", x: 420, y: 420, w: 160, h: 120, rotationDeg: 0 };
+    case "arc":
+      return {
+        kind: "arc",
+        cx: 500,
+        cy: 500,
+        r: 120,
+        startDeg: -60,
+        sweepDeg: 120,
+      };
+    default:
+      return { kind: "point", x: 500, y: 500 };
+  }
+}
+
+export function normalizeAgentAbilityBlueprint(raw: unknown): AgentAbilityBlueprint | null {
+  if (!raw || typeof raw !== "object") return null;
+  const o = raw as Record<string, unknown>;
+  const id = typeof o.id === "string" && o.id ? o.id : newId();
+  const slot = normalizeSlot(o.slot);
+  const name =
+    typeof o.name === "string" && o.name.trim() ? o.name.trim() : "Ability";
+  const shapeKind = normalizeShapeKind(o.shapeKind ?? o.shape_kind);
+  const color = normalizeColor(o.color);
+  let geometry = normalizeGeometry(shapeKind, o.geometry);
+  if (!geometry) {
+    geometry = defaultGeometry(shapeKind);
+  }
+  return { id, slot, name, shapeKind, color, geometry };
+}
+
+export function normalizeAgentAbilitiesBlueprint(raw: unknown): AgentAbilityBlueprint[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map(normalizeAgentAbilityBlueprint)
+    .filter((x): x is AgentAbilityBlueprint => x != null);
+}

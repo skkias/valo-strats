@@ -767,6 +767,14 @@ export function MapShapeEditor({
   });
   const annotationDragRef = useRef<AnnotationDragState | null>(null);
 
+  /**
+   * "Place on map" (spawn/label placement) should turn off when the user switches
+   * draw vs edit, polygon vs circle, sidebar tab, active layer, or geometry selection.
+   */
+  useEffect(() => {
+    setPlaceMode("none");
+  }, [tool, drawShapeMode, sidebarTab, selection, activeLayer]);
+
   const clipId = useId().replace(/:/g, "");
   const outlineRingsRef = useRef({ outer: outlineOuter, holes: outlineHoles });
   const vbRef = useRef(parseViewBox(initial.view_box));
@@ -1199,6 +1207,7 @@ export function MapShapeEditor({
       if (e.button === 2) {
         e.preventDefault();
         e.stopPropagation();
+        setPlaceMode("none");
         setEditorMeta((m) => ({
           ...m,
           spawn_markers: m.spawn_markers.filter((s) => s.id !== id),
@@ -1207,6 +1216,7 @@ export function MapShapeEditor({
       }
       if (e.button !== 0) return;
       e.stopPropagation();
+      setPlaceMode("none");
       const svg = svgRef.current;
       if (!svg) return;
       const startSvg = clientToSvg(svg, e.clientX, e.clientY);
@@ -1232,6 +1242,7 @@ export function MapShapeEditor({
       if (e.button === 2) {
         e.preventDefault();
         e.stopPropagation();
+        setPlaceMode("none");
         setEditorMeta((m) => ({
           ...m,
           location_labels: m.location_labels.filter((l) => l.id !== id),
@@ -1240,6 +1251,7 @@ export function MapShapeEditor({
       }
       if (e.button !== 0) return;
       e.stopPropagation();
+      setPlaceMode("none");
       setSelectedLabelId(id);
       setSidebarTab("annotation");
       const svg = svgRef.current;
@@ -3473,9 +3485,10 @@ export function MapShapeEditor({
                       <select
                         className="input-field mt-1 w-full py-1.5 text-xs"
                         value={selectedLabelId ?? ""}
-                        onChange={(e) =>
-                          setSelectedLabelId(e.target.value || null)
-                        }
+                        onChange={(e) => {
+                          setPlaceMode("none");
+                          setSelectedLabelId(e.target.value || null);
+                        }}
                       >
                         <option value="">— Choose —</option>
                         {editorMeta.location_labels.map((lb) => (

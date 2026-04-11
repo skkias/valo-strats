@@ -1,4 +1,5 @@
 import type { MapPoint } from "@/lib/map-path";
+import type { AgentAbilityBlueprint } from "@/types/agent-ability";
 
 /** Row from `public.agents`. `slug` keys future ability / UI data. */
 export interface Agent {
@@ -7,6 +8,8 @@ export interface Agent {
   name: string;
   role: string;
   sort_order: number;
+  /** Coach-drawn ability shapes (lineup-style); optional until migration applied. */
+  abilities_blueprint?: AgentAbilityBlueprint[];
 }
 
 /** Pan/zoom in map editor viewBox coordinates (see `view_box`). */

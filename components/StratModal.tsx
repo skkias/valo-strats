@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import type { Agent, GameMap } from "@/types/catalog";
 import type { Strat } from "@/types/strat";
+import { StratViewerPanel } from "@/components/StratViewerPanel";
+import { resolveGameMapForStrat } from "@/lib/resolve-game-map";
 import {
   X,
   ChevronLeft,
@@ -10,17 +13,23 @@ import {
   MapPin,
   Swords,
   Shield,
+  Layers,
 } from "lucide-react";
 
 export function StratModal({
   strat,
   onClose,
+  maps = [],
+  agentsCatalog = [],
 }: {
   strat: Strat | null;
   onClose: () => void;
+  maps?: GameMap[];
+  agentsCatalog?: Agent[];
 }) {
   const images = strat?.images?.filter((i) => i.url) ?? [];
-  const [index, setIndex] = useState(0);
+  const [imageIndex, setImageIndex] = useState(0);
+  const [stageIndex, setStageIndex] = useState(0);
 
   useEffect(() => {
     if (!strat) return;
@@ -31,17 +40,34 @@ export function StratModal({
     return () => window.removeEventListener("keydown", onKey);
   }, [strat, onClose]);
 
-  const go = useCallback(
+  useEffect(() => {
+    if (!strat) return;
+    setImageIndex(0);
+    setStageIndex(0);
+  }, [strat?.id]);
+
+  const gameMap = useMemo(
+    () => (strat ? resolveGameMapForStrat(strat, maps) : null),
+    [strat, maps],
+  );
+
+  const stages = strat?.strat_stages ?? [];
+  const maxStage = Math.max(0, stages.length - 1);
+  const safeStageIndex = Math.min(stageIndex, maxStage);
+  const activeStage = stages[safeStageIndex] ?? stages[0];
+
+  const goImage = useCallback(
     (dir: -1 | 1) => {
       if (images.length === 0) return;
-      setIndex((i) => (i + dir + images.length) % images.length);
+      setImageIndex((i) => (i + dir + images.length) % images.length);
     },
     [images.length],
   );
 
   if (!strat) return null;
 
-  const current = images[index];
+  const currentImage = images[imageIndex];
+  const compSlugs = strat.agents;
 
   return (
     <div
@@ -56,7 +82,7 @@ export function StratModal({
         onClick={onClose}
         aria-label="Close"
       />
-      <div className="relative z-10 flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-violet-500/25 bg-slate-950/95 shadow-2xl shadow-violet-950/40 ring-1 ring-violet-500/10">
+      <div className="relative z-10 flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-violet-500/25 bg-slate-950/95 shadow-2xl shadow-violet-950/40 ring-1 ring-violet-500/10">
         <div className="flex items-start justify-between gap-4 border-b border-violet-500/15 p-5">
           <div>
             <h2
@@ -97,21 +123,95 @@ export function StratModal({
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col gap-0 overflow-y-auto">
-          {images.length > 0 && current && (
+          {gameMap && activeStage ? (
+            <div className="border-b border-violet-500/10 bg-slate-950/40 px-4 py-4">
+              <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-violet-400/55">
+                <Layers className="h-3.5 w-3.5" aria-hidden />
+                Map & stages
+              </div>
+              <StratViewerPanel
+                gameMap={gameMap}
+                side={strat.side}
+                stage={activeStage}
+                compSlugs={compSlugs}
+                agentsCatalog={agentsCatalog}
+              />
+              {stages.length > 0 && (
+                <div className="mt-4 space-y-3">
+                  <p className="text-xs font-medium text-violet-300/70">
+                    Stage timeline
+                  </p>
+                  <div
+                    className="flex gap-2 overflow-x-auto pb-1 pt-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                    role="tablist"
+                    aria-label="Strat stages"
+                  >
+                    {stages.map((st, i) => {
+                      const on = i === safeStageIndex;
+                      return (
+                        <button
+                          key={st.id}
+                          type="button"
+                          role="tab"
+                          aria-selected={on}
+                          onClick={() => setStageIndex(i)}
+                          className={`flex shrink-0 items-baseline gap-2 rounded-xl border px-3 py-2 text-left text-sm transition ${
+                            on
+                              ? "border-violet-500/50 bg-violet-950/55 text-violet-50 shadow-md shadow-violet-950/20"
+                              : "border-violet-800/40 bg-slate-950/50 text-violet-200/85 hover:border-violet-500/35"
+                          }`}
+                        >
+                          <span
+                            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                              on
+                                ? "bg-violet-600 text-white"
+                                : "bg-slate-900 text-violet-300/80"
+                            }`}
+                          >
+                            {i + 1}
+                          </span>
+                          <span className="max-w-[14rem] font-medium leading-snug">
+                            {st.title}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {activeStage?.notes?.trim() ? (
+                    <p className="rounded-lg border border-violet-500/15 bg-slate-950/50 p-3 text-sm text-violet-100/90">
+                      {activeStage.notes}
+                    </p>
+                  ) : null}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="border-b border-violet-500/10 px-5 py-4">
+              <p className="text-sm text-violet-300/70">
+                {gameMap
+                  ? "No stage data for this strat."
+                  : maps.length === 0
+                    ? "Map catalog unavailable — link this strat to a map in Coach to see the vector layout."
+                    : "No matching map in the catalog for this strat. Assign a map in Coach or fix the map name."}
+              </p>
+            </div>
+          )}
+
+          {images.length > 0 && currentImage && (
             <div className="relative aspect-video w-full bg-black">
               <Image
-                src={current.url}
-                alt={current.label || strat.title}
+                src={currentImage.url}
+                alt={currentImage.label || strat.title}
                 fill
                 className="object-contain"
-                sizes="(max-width: 768px) 100vw, 48rem"
+                sizes="(max-width: 768px) 100vw, 56rem"
                 priority
               />
               {images.length > 1 && (
                 <>
                   <button
                     type="button"
-                    onClick={() => go(-1)}
+                    onClick={() => goImage(-1)}
                     className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white hover:bg-black/70"
                     aria-label="Previous image"
                   >
@@ -119,20 +219,20 @@ export function StratModal({
                   </button>
                   <button
                     type="button"
-                    onClick={() => go(1)}
+                    onClick={() => goImage(1)}
                     className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 p-2 text-white hover:bg-black/70"
                     aria-label="Next image"
                   >
                     <ChevronRight className="h-6 w-6" />
                   </button>
                   <div className="absolute bottom-2 left-0 right-0 text-center text-xs text-zinc-300">
-                    {current.label && (
+                    {currentImage.label && (
                       <span className="rounded bg-black/60 px-2 py-1">
-                        {current.label}
+                        {currentImage.label}
                       </span>
                     )}
                     <span className="ml-2 text-zinc-500">
-                      {index + 1} / {images.length}
+                      {imageIndex + 1} / {images.length}
                     </span>
                   </div>
                 </>

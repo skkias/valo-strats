@@ -1,7 +1,8 @@
 import { createServerSupabaseClient } from "@/lib/supabase-server";
-import { listAgents } from "@/lib/catalog-queries";
+import { listAgents, listMaps } from "@/lib/catalog-queries";
 import { StratGrid } from "@/components/StratGrid";
 import { normalizeStratRow } from "@/lib/strat-normalize";
+import type { Agent, GameMap } from "@/types/catalog";
 import type { Strat } from "@/types/strat";
 
 export default async function Home() {
@@ -33,6 +34,8 @@ export default async function Home() {
   let strats: Strat[] = [];
   let errorMessage: string | null = null;
   let agentNames: Record<string, string> = {};
+  let initialMaps: GameMap[] = [];
+  let initialAgents: Agent[] = [];
 
   try {
     const supabase = await createServerSupabaseClient();
@@ -47,9 +50,13 @@ export default async function Home() {
         normalizeStratRow(r as Strat & { map_id?: string | null }),
       );
     try {
-      const agents = await listAgents();
+      const [agents, maps] = await Promise.all([listAgents(), listMaps()]);
+      initialAgents = agents;
+      initialMaps = maps;
       agentNames = Object.fromEntries(agents.map((a) => [a.slug, a.name]));
     } catch {
+      initialAgents = [];
+      initialMaps = [];
       agentNames = {};
     }
   } catch (e) {
@@ -79,7 +86,12 @@ export default async function Home() {
           </p>
         </div>
       </div>
-      <StratGrid initialStrats={strats} agentNamesBySlug={agentNames} />
+      <StratGrid
+        initialStrats={strats}
+        agentNamesBySlug={agentNames}
+        initialMaps={initialMaps}
+        initialAgents={initialAgents}
+      />
     </main>
   );
 }

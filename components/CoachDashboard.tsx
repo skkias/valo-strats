@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Strat,
   StratImage,
@@ -10,13 +10,14 @@ import type {
 } from "@/types/strat";
 import type { Agent, GameMap } from "@/types/catalog";
 import {
+  Folder,
   Loader2,
-  Trash2,
-  Pencil,
-  Plus,
-  Upload,
   Lock,
   Map as MapIcon,
+  Plus,
+  Trash2,
+  Upload,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 import { StratStageEditor } from "@/components/StratStageEditor";
@@ -105,6 +106,36 @@ function slotsFromStratAgents(
   const out = [...EMPTY_SLOTS] as [string, string, string, string, string];
   for (let i = 0; i < 5; i++) out[i] = agents[i] ?? "";
   return out;
+}
+
+type MapStratGroup = {
+  key: string;
+  label: string;
+  sort: number;
+  strats: Strat[];
+};
+
+function groupStratsByMap(strats: Strat[], maps: GameMap[]): MapStratGroup[] {
+  const orderById = new Map(maps.map((m, i) => [m.id, i]));
+  const buckets = new Map<string, MapStratGroup>();
+
+  for (const s of strats) {
+    const resolvedId = s.map_id ?? resolveMapId(s, maps);
+    const meta = resolvedId ? maps.find((m) => m.id === resolvedId) : undefined;
+    const key = meta?.id ?? `legacy:${(s.map || "unknown").toLowerCase()}`;
+    const label = meta?.name ?? (s.map || "Unknown map");
+    const sort = meta ? (orderById.get(meta.id) ?? 500) : 600;
+    if (!buckets.has(key)) {
+      buckets.set(key, { key, label, sort, strats: [] });
+    }
+    buckets.get(key)!.strats.push(s);
+  }
+  for (const g of buckets.values()) {
+    g.strats.sort((a, b) => a.title.localeCompare(b.title));
+  }
+  return [...buckets.values()].sort(
+    (a, b) => a.sort - b.sort || a.label.localeCompare(b.label),
+  );
 }
 
 export function CoachDashboard({
@@ -205,7 +236,7 @@ export function CoachDashboard({
     return () => window.removeEventListener("paste", onPaste);
   }, [pasteTargetRow, uploadImageFile]);
 
-  function startEdit(s: Strat) {
+  const startEdit = useCallback((s: Strat) => {
     setEditingId(s.id);
     setForm({
       title: s.title,
@@ -226,12 +257,34 @@ export function CoachDashboard({
         s.strat_stages.length > 0 ? s.strat_stages : defaultStratStages(),
     });
     setBanner(null);
-  }
+  }, [initialMaps]);
 
-  function cancelEdit() {
+  const selectNewStrat = useCallback(() => {
     setEditingId(null);
     setForm(emptyForm());
-  }
+    setBanner(null);
+  }, []);
+
+  const initSelectionRef = useRef(false);
+
+  useEffect(() => {
+    if (listLoading) return;
+    if (initSelectionRef.current) return;
+    if (strats.length === 0) {
+      initSelectionRef.current = true;
+      return;
+    }
+    initSelectionRef.current = true;
+    startEdit(strats[0]!);
+  }, [listLoading, strats, startEdit]);
+
+  useEffect(() => {
+    if (listLoading) return;
+    if (!editingId) return;
+    if (strats.some((s) => s.id === editingId)) return;
+    if (strats[0]) startEdit(strats[0]);
+    else selectNewStrat();
+  }, [listLoading, strats, editingId, startEdit, selectNewStrat]);
 
   function buildPayload(): Omit<Strat, "id" | "created_at"> {
     const agents = form.agentSlots.map((x) => x.trim()).filter(Boolean);
@@ -284,20 +337,22 @@ export function CoachDashboard({
       if (error) setBanner(error);
       else {
         setBanner("Strat updated.");
-        cancelEdit();
         void loadStrats();
       }
       return;
     }
 
-    const { error } = await createStratAction(payload);
+    const { error, strat } = await createStratAction(payload);
     setSaving(false);
-    if (error) setBanner(error);
-    else {
-      setBanner("Strat created.");
-      setForm(emptyForm());
-      void loadStrats();
+    if (error) {
+      setBanner(error);
+      return;
     }
+    setBanner("Strat created.");
+    if (strat) {
+      startEdit(strat);
+    }
+    void loadStrats();
   }
 
   async function handleDelete(id: string) {
@@ -306,7 +361,9 @@ export function CoachDashboard({
     if (error) setBanner(error);
     else {
       void loadStrats();
-      if (editingId === id) cancelEdit();
+      if (editingId === id) {
+        selectNewStrat();
+      }
     }
   }
 
@@ -325,13 +382,18 @@ export function CoachDashboard({
 
   const selectedStratMap = initialMaps.find((m) => m.id === form.map_id);
 
+  const stratsByMap = useMemo(
+    () => groupStratsByMap(strats, initialMaps),
+    [strats, initialMaps],
+  );
+
   return (
-    <div className="space-y-10">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-violet-900/35 bg-slate-950/40 px-4 py-3">
         <p className="text-sm text-violet-200/65">
           Signed in with the{" "}
-          <span className="text-slate-100">coach password</span>. Strats update
-          the public browse page after each save.
+          <span className="text-slate-100">coach password</span>. Changes apply
+          to the public page after save.
         </p>
         <div className="flex flex-wrap gap-2">
           <Link
@@ -340,6 +402,13 @@ export function CoachDashboard({
           >
             <MapIcon className="h-4 w-4" />
             Map shapes
+          </Link>
+          <Link
+            href="/coach/agents"
+            className="btn-secondary inline-flex items-center gap-2"
+          >
+            <Users className="h-4 w-4" />
+            Agent abilities
           </Link>
           <button
             type="button"
@@ -350,7 +419,7 @@ export function CoachDashboard({
             {listLoading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : null}
-            Refresh list
+            Refresh
           </button>
           <form action={lockCoach}>
             <button
@@ -364,6 +433,83 @@ export function CoachDashboard({
         </div>
       </div>
 
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        <aside className="flex max-h-[42vh] w-full shrink-0 flex-col border-violet-900/40 bg-slate-950/65 md:max-h-none md:h-[min(100dvh,1200px)] md:w-72 md:border-r">
+          <div className="border-b border-violet-900/35 p-3">
+            <button
+              type="button"
+              onClick={selectNewStrat}
+              className={`inline-flex w-full items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold transition ${
+                editingId === null
+                  ? "bg-violet-500 text-white shadow-lg shadow-violet-600/25 ring-2 ring-violet-400/40"
+                  : "btn-primary"
+              }`}
+            >
+              <Plus className="h-4 w-4" />
+              New strat
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2 [scrollbar-gutter:stable]">
+            {listLoading && strats.length === 0 ? (
+              <p className="px-2 py-3 text-sm text-violet-400/60">Loading…</p>
+            ) : strats.length === 0 ? (
+              <p className="px-2 py-3 text-sm text-violet-400/55">
+                No strats yet. Use{" "}
+                <span className="text-violet-200">New strat</span> to add one.
+              </p>
+            ) : (
+              <ul className="space-y-4">
+                {stratsByMap.map((group) => (
+                  <li key={group.key}>
+                    <div className="mb-1.5 flex items-center gap-2 px-1 text-xs font-semibold uppercase tracking-wide text-violet-400/70">
+                      <Folder className="h-3.5 w-3.5 shrink-0 opacity-80" />
+                      <span className="truncate">{group.label}</span>
+                    </div>
+                    <ul className="space-y-0.5 border-l border-violet-800/30 pl-2">
+                      {group.strats.map((s) => {
+                        const active = editingId === s.id;
+                        return (
+                          <li key={s.id} className="group flex items-stretch gap-1">
+                            <button
+                              type="button"
+                              onClick={() => startEdit(s)}
+                              className={`min-w-0 flex-1 rounded-md px-2 py-1.5 text-left text-sm transition ${
+                                active
+                                  ? "bg-violet-600/35 text-white ring-1 ring-violet-500/50"
+                                  : "text-violet-100/85 hover:bg-violet-950/50"
+                              }`}
+                            >
+                              <span className="line-clamp-2 font-medium">
+                                {s.title || "Untitled"}
+                              </span>
+                              <span className="mt-0.5 block text-[11px] text-violet-400/60">
+                                {s.side === "atk" ? "Attack" : "Defense"}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              title="Delete strat"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleDelete(s.id);
+                              }}
+                              className="shrink-0 rounded-md p-1.5 text-violet-500/50 opacity-80 hover:bg-fuchsia-950/50 hover:text-fuchsia-300 group-hover:opacity-100"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </aside>
+
+        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain">
+          <div className="mx-auto max-w-4xl space-y-6 p-4 pb-16 md:p-8">
       {catalogError && (
         <p
           className="rounded-lg border border-fuchsia-900/50 bg-fuchsia-950/30 px-4 py-3 text-sm text-fuchsia-200"
@@ -735,58 +881,18 @@ export function CoachDashboard({
             {editingId && (
               <button
                 type="button"
-                onClick={cancelEdit}
+                onClick={selectNewStrat}
                 className="btn-secondary"
               >
-                Cancel edit
+                New draft
               </button>
             )}
           </div>
         </form>
       </section>
-
-      <section>
-        <h2 className="text-lg font-semibold text-white">Your strats</h2>
-        {listLoading && strats.length === 0 ? (
-          <p className="mt-4 text-violet-300/50">Loading…</p>
-        ) : strats.length === 0 ? (
-          <p className="mt-4 text-violet-300/50">No strats yet.</p>
-        ) : (
-          <ul className="mt-4 divide-y divide-violet-900/50 rounded-xl border border-violet-500/20">
-            {strats.map((s) => (
-              <li
-                key={s.id}
-                className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
-              >
-                <div>
-                  <p className="font-medium text-slate-100">{s.title}</p>
-                  <p className="text-sm text-violet-300/55">
-                    {s.map} · {s.side === "atk" ? "Attack" : "Defense"}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => startEdit(s)}
-                    className="btn-secondary inline-flex items-center gap-1 text-sm"
-                  >
-                    <Pencil className="h-4 w-4" />
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleDelete(s.id)}
-                    className="inline-flex items-center gap-1 rounded-lg border border-fuchsia-800/50 bg-fuchsia-950/45 px-3 py-2 text-sm text-fuchsia-200 hover:bg-fuchsia-950/65"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Delete
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
