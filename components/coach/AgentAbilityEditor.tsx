@@ -652,8 +652,8 @@ export function AgentAbilityEditor({
                 fill="rgba(148,163,184,0.55)"
                 style={{ fontSize: VB * 0.022, fontFamily: "system-ui" }}
               >
-                Blueprint space {VB}×{VB} units — major grid 100 · strat scale{" "}
-                {STRAT_BLUEPRINT_BBOX_TO_MAP_WIDTH_RATIO * 100}% of map width (bbox)
+                Blueprint space {VB}×{VB} units — major grid 100 · full canvas edge ={" "}
+                {STRAT_BLUEPRINT_BBOX_TO_MAP_WIDTH_RATIO * 100}% of map width (linear)
               </text>
               {abilities.map((b) => (
                 <g
@@ -878,10 +878,11 @@ export function AgentAbilityEditor({
                 <p className="text-[11px] text-violet-400/75">
                   Edit coordinates in{" "}
                   <strong className="text-violet-200/90">blueprint units</strong> (0–
-                  {VB}). Strat maps use the same uniform scale as{" "}
-                  <code className="text-violet-300/85">StratAbilityBlueprintSvg</code>
-                  : bounding-box max side →{" "}
-                  {STRAT_BLUEPRINT_BBOX_TO_MAP_WIDTH_RATIO * 100}% of view width.
+                  {VB}). On strats, the{" "}
+                  <strong className="text-violet-200/90">{BLUEPRINT_CANVAS_SIZE} bp</strong>{" "}
+                  canvas edge maps to{" "}
+                  {STRAT_BLUEPRINT_BBOX_TO_MAP_WIDTH_RATIO * 100}% of map view width;
+                  larger shapes in bp render larger on the map (linear scale).
                 </p>
                 {(() => {
                   const { bboxMaxSide, targetPercentOfMapWidth } =
@@ -890,21 +891,24 @@ export function AgentAbilityEditor({
                     ? viewBoxRectFromMap(previewMap).width
                     : null;
                   const perBp =
-                    w != null && bboxMaxSide > 0
+                    w != null
                       ? (STRAT_BLUEPRINT_BBOX_TO_MAP_WIDTH_RATIO * w) /
-                        bboxMaxSide
+                        BLUEPRINT_CANVAS_SIZE
                       : null;
                   return (
                     <p className="rounded-md border border-violet-800/40 bg-slate-950/50 px-2 py-1.5 font-mono text-[11px] leading-relaxed text-violet-200/90">
-                      BBox max side: {bboxMaxSide.toFixed(3)} bp. On strats, that
-                      side spans {targetPercentOfMapWidth}% of map view width
-                      (uniform).
+                      BBox max side: {bboxMaxSide.toFixed(3)} bp →{" "}
+                      {perBp != null
+                        ? (bboxMaxSide * perBp).toFixed(2)
+                        : "—"}{" "}
+                      map units ({BLUEPRINT_CANVAS_SIZE} bp = {targetPercentOfMapWidth}% of
+                      map width).
                       {perBp != null && previewMap && w != null ? (
                         <>
                           {" "}
                           Preview{" "}
                           <span className="text-violet-100/95">{previewMap.name}</span>
-                          : view width {w.toFixed(1)} →{" "}
+                          :{" "}
                           <strong className="text-violet-50/95">
                             {perBp.toFixed(4)}
                           </strong>{" "}
@@ -943,10 +947,10 @@ export function AgentAbilityEditor({
           Map preview (same scale as strat designer)
         </h3>
         <p className="mt-1 text-xs leading-relaxed text-violet-300/65">
-          Overlay the selected blueprint on a real map. Sizing matches strat stages: the
-          shape’s bounding box is scaled so its larger side equals{" "}
-          {STRAT_BLUEPRINT_BBOX_TO_MAP_WIDTH_RATIO * 100}% of the map viewBox width, then
-          centered on the anchor point (same as ability pins).
+          Overlay the selected blueprint on a real map. Same linear scale as strat pins:
+          the {BLUEPRINT_CANVAS_SIZE} bp canvas spans{" "}
+          {STRAT_BLUEPRINT_BBOX_TO_MAP_WIDTH_RATIO * 100}% of map width; the shape is
+          centered on the anchor.
         </p>
         {maps.length === 0 ? (
           <p className="mt-3 text-sm text-amber-200/80">
