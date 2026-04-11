@@ -14,6 +14,7 @@ import {
   isCircleOverlay,
 } from "@/lib/map-overlay-geometry";
 import { stratMapDisplayData } from "@/lib/strat-map-display";
+import { outlinePathForStratSide } from "@/lib/map-strat-side";
 import type { MapPoint } from "@/lib/map-path";
 
 /** Read-only map overlay rendering (aligned with `MapShapeEditor` colors). */
@@ -251,6 +252,8 @@ function DoorwayOverlaySvg({
 }
 
 export type StratMapLayerVisibility = {
+  /** Outer playable ring and holes (saved `path_atk` / `path_def`). */
+  territoryOutline: boolean;
   labels: boolean;
   spawnAtk: boolean;
   spawnDef: boolean;
@@ -266,6 +269,7 @@ export type StratMapLayerVisibility = {
 };
 
 const DEFAULT_VISIBILITY: StratMapLayerVisibility = {
+  territoryOutline: true,
   labels: true,
   spawnAtk: true,
   spawnDef: true,
@@ -318,6 +322,11 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
     [gameMap, side],
   );
 
+  const territoryPathD = useMemo(
+    () => outlinePathForStratSide(gameMap, side),
+    [gameMap, side],
+  );
+
   const vbStr = `${vb.minX} ${vb.minY} ${vb.width} ${vb.height}`;
 
   const overlaysSorted = useMemo(() => {
@@ -356,6 +365,7 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
     <div className="space-y-3">
       {showLayerToggles ? (
         <div className="flex flex-wrap gap-2">
+          {toggleRow("territoryOutline", "Playable outline")}
           {toggleRow("labels", "Labels")}
           {toggleRow("spawnAtk", "Spawns · Attack")}
           {toggleRow("spawnDef", "Spawns · Defense")}
@@ -389,7 +399,7 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
           }}
           preserveAspectRatio="xMidYMid meet"
           role="img"
-          aria-label={`Map preview (${side === "atk" ? "attack" : "defense"} view). Outline and cutouts are not shown.`}
+          aria-label={`Map preview (${side === "atk" ? "attack" : "defense"} view). Vector layers from the map editor.`}
         >
           <title>
             Map layers for {gameMap.name} — {side === "atk" ? "attack" : "defense"}{" "}
@@ -402,6 +412,20 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
             height={vb.height}
             fill="rgb(15,23,42)"
           />
+
+          {effectiveVis.territoryOutline &&
+            territoryPathD &&
+            territoryPathD.trim().length > 0 && (
+              <path
+                d={territoryPathD}
+                fill="rgba(167,139,250,0.12)"
+                fillRule="evenodd"
+                stroke="rgb(167,139,250)"
+                strokeWidth={vb.width * 0.004}
+                strokeLinejoin="round"
+                pointerEvents="none"
+              />
+            )}
 
           <g style={{ pointerEvents: "none" }}>
             {overlaysSorted.map((sh) => {
@@ -571,8 +595,8 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
         </svg>
       </div>
       <p className="text-[11px] leading-relaxed text-violet-400/45">
-        Reference art is map-editor only and never shown in strats. Territory
-        outline and cutouts are omitted here. Edit vectors on{" "}
+        Reference minimap art stays in the editor; strats use the saved outline and
+        overlays. Edit vectors on{" "}
         <a
           href={`/coach/maps/${gameMap.id}`}
           className="text-violet-300/80 underline underline-offset-2 hover:text-violet-200"
