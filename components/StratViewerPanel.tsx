@@ -17,12 +17,17 @@ export function StratViewerPanel({
   stage,
   compSlugs,
   agentsCatalog,
+  embed = false,
+  showFooter = true,
 }: {
   gameMap: GameMap;
   side: StratSide;
   stage: StratStage;
   compSlugs: string[];
   agentsCatalog: Agent[];
+  /** Fill a flex column (e.g. modal map pane). */
+  embed?: boolean;
+  showFooter?: boolean;
 }) {
   const { vb } = useMemo(
     () => stratMapDisplayData(gameMap, side),
@@ -31,7 +36,13 @@ export function StratViewerPanel({
   const vbWidth = vb.width;
 
   return (
-    <StratMapViewer gameMap={gameMap} side={side} showLayerToggles>
+    <StratMapViewer
+      gameMap={gameMap}
+      side={side}
+      showLayerToggles
+      showFooter={showFooter}
+      embed={embed}
+    >
       <StratStagePinsReadonly
         vbWidth={vbWidth}
         stage={stage}

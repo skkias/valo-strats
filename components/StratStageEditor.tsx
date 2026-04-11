@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 import type { Agent, GameMap } from "@/types/catalog";
 import type {
@@ -79,6 +80,8 @@ export function StratStageEditor({
   agentsCatalog,
   stages,
   onStagesChange,
+  controlsMountEl,
+  mapMountEl,
 }: {
   gameMap: GameMap;
   side: StratSide;
@@ -87,6 +90,10 @@ export function StratStageEditor({
   agentsCatalog: Agent[];
   stages: StratStage[];
   onStagesChange: (next: StratStage[]) => void;
+  /** Portal target for Stage/Tokens UI (e.g. coach left column). */
+  controlsMountEl: HTMLElement | null;
+  /** Portal target for the map viewer only (e.g. coach right column). */
+  mapMountEl: HTMLElement | null;
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [activeStageIndex, setActiveStageIndex] = useState(0);
@@ -408,18 +415,13 @@ export function StratStageEditor({
     });
   }
 
-  if (!activeStage) {
-    return (
-      <p className="text-sm text-amber-200/80">
-        Add strat stages data (save error). Try refreshing the coach page.
-      </p>
-    );
-  }
-
-  return (
-    <div className="flex w-full min-h-0 flex-col gap-4 lg:min-h-[min(76dvh,940px)] lg:flex-row lg:items-stretch lg:gap-5">
-      <div className="flex min-h-0 w-full min-w-0 flex-col lg:max-w-md lg:shrink-0 xl:max-w-lg">
-        <div className="flex gap-1 rounded-lg border border-violet-800/45 bg-slate-950/70 p-0.5">
+  const controlsPanel = !activeStage ? (
+    <p className="text-sm text-amber-200/80">
+      Add strat stages data (save error). Try refreshing the coach page.
+    </p>
+  ) : (
+    <div className="flex min-h-0 w-full min-w-0 flex-col">
+      <div className="flex gap-1 rounded-lg border border-violet-800/45 bg-slate-950/70 p-0.5">
           <button
             type="button"
             onClick={() => setEditorTab("stage")}
@@ -623,7 +625,7 @@ export function StratStageEditor({
               </p>
               {roster.length === 0 ? (
                 <p className="mt-2 text-xs text-amber-200/80">
-                  Fill the five agents in the comp on the left to enable tokens.
+                  Fill the five agents in the comp (Details tab) to enable tokens.
                 </p>
               ) : (
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -679,10 +681,13 @@ export function StratStageEditor({
             </div>
           )}
         </div>
-      </div>
+    </div>
+  );
 
+  const mapPanel =
+    activeStage ? (
       <div
-        className="flex min-h-0 min-w-0 flex-1 flex-col"
+        className="flex min-h-0 min-h-[min(56dvh,720px)] w-full min-w-0 flex-1 flex-col lg:min-h-0 lg:flex-1"
         style={{
           animation: mapAnim
             ? `${mapAnim.name} ${mapAnim.ms}ms ease both`
@@ -700,6 +705,14 @@ export function StratStageEditor({
           {overlay}
         </StratMapViewer>
       </div>
-    </div>
+    ) : null;
+
+  return (
+    <>
+      {controlsMountEl
+        ? createPortal(controlsPanel, controlsMountEl)
+        : null}
+      {mapMountEl && mapPanel ? createPortal(mapPanel, mapMountEl) : null}
+    </>
   );
 }

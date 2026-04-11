@@ -267,6 +267,14 @@ export function CoachDashboard({
 
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const [splitPct, setSplitPct] = useState(50);
+  const [coachFormTab, setCoachFormTab] = useState<"details" | "stages">(
+    "details",
+  );
+  const [stagesControlsMountEl, setStagesControlsMountEl] =
+    useState<HTMLDivElement | null>(null);
+  const [stratMapMountEl, setStratMapMountEl] = useState<HTMLDivElement | null>(
+    null,
+  );
   const splitDragRef = useRef<{ startX: number; startPct: number } | null>(
     null,
   );
@@ -588,7 +596,39 @@ export function CoachDashboard({
               } as React.CSSProperties
             }
           >
-            <div className="min-w-0 w-full space-y-4 lg:flex-[0_0_var(--coach-split-pct)]">
+            <div className="flex min-h-0 w-full min-w-0 flex-col gap-3 lg:flex-[0_0_var(--coach-split-pct)] lg:min-h-[min(76dvh,940px)]">
+              <div className="flex shrink-0 gap-1 rounded-lg border border-violet-800/45 bg-slate-950/70 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setCoachFormTab("details")}
+                  className={`min-w-0 flex-1 rounded-md px-3 py-2 text-center text-sm font-medium transition ${
+                    coachFormTab === "details"
+                      ? "bg-violet-600 text-white shadow-md shadow-violet-900/30"
+                      : "text-violet-300/80 hover:bg-violet-950/50 hover:text-violet-100"
+                  }`}
+                >
+                  Details
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCoachFormTab("stages")}
+                  className={`min-w-0 flex-1 rounded-md px-3 py-2 text-center text-sm font-medium transition ${
+                    coachFormTab === "stages"
+                      ? "bg-violet-600 text-white shadow-md shadow-violet-900/30"
+                      : "text-violet-300/80 hover:bg-violet-950/50 hover:text-violet-100"
+                  }`}
+                >
+                  Map & stages
+                </button>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-0.5 [scrollbar-gutter:stable]">
+                <div
+                  className={
+                    coachFormTab === "details" ? "space-y-4" : "hidden"
+                  }
+                  aria-hidden={coachFormTab !== "details"}
+                >
               <div className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <label className="label" htmlFor="title">
@@ -881,6 +921,36 @@ export function CoachDashboard({
               Add image row
             </button>
               </div>
+                </div>
+
+                <div
+                  className={
+                    coachFormTab === "stages" ? "space-y-3" : "hidden"
+                  }
+                  aria-hidden={coachFormTab !== "stages"}
+                >
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">
+                      Strat map &amp; stages
+                    </h3>
+                    <p className="mt-1 text-xs text-violet-400/50">
+                      Timeline and pins: place comp agents and Q/E/C/X on the
+                      map. Full vector editing lives under{" "}
+                      <Link
+                        href="/coach/maps"
+                        className="text-violet-300 underline"
+                      >
+                        Map shapes
+                      </Link>
+                      .
+                    </p>
+                  </div>
+                  <div
+                    ref={setStagesControlsMountEl}
+                    className="min-h-0 min-h-[200px] flex-1"
+                  />
+                </div>
+              </div>
             </div>
 
             <div
@@ -891,47 +961,39 @@ export function CoachDashboard({
               onMouseDown={onSplitMouseDown}
             />
 
-            <div className="min-w-0 w-full lg:sticky lg:top-4 lg:max-h-[min(calc(100dvh-5rem),1100px)] lg:flex-1 lg:overflow-y-auto lg:overscroll-contain lg:rounded-xl lg:border lg:border-violet-800/35 lg:bg-slate-950/35 lg:p-4">
+            <div className="flex min-h-0 min-w-0 w-full flex-col lg:sticky lg:top-4 lg:max-h-[min(calc(100dvh-5rem),1100px)] lg:flex-1 lg:overflow-hidden lg:rounded-xl lg:border lg:border-violet-800/35 lg:bg-slate-950/35 lg:p-2">
               {selectedStratMap ? (
-                <div className="space-y-3">
-                  <div>
-                    <h3 className="text-sm font-semibold text-white">
-                      Strat map & stages
-                    </h3>
-                    <p className="mt-1 text-xs text-violet-400/50">
-                      Timeline and pins: place comp agents and Q/E/C/X on the map.
-                      Full vector editing lives under{" "}
-                      <Link
-                        href="/coach/maps"
-                        className="text-violet-300 underline"
-                      >
-                        Map shapes
-                      </Link>
-                      .
-                    </p>
-                  </div>
-                  <StratStageEditor
-                    gameMap={selectedStratMap}
-                    side={form.side}
-                    compSlugs={form.agentSlots}
-                    agentsCatalog={initialAgents}
-                    stages={form.stratStages}
-                    onStagesChange={(next) =>
-                      setForm((f) => ({ ...f, stratStages: next }))
-                    }
-                  />
-                </div>
+                <div
+                  ref={setStratMapMountEl}
+                  className="flex min-h-[min(56dvh,400px)] min-w-0 flex-1 flex-col lg:min-h-0"
+                />
               ) : (
                 <div className="rounded-lg border border-dashed border-violet-800/45 bg-slate-950/40 px-4 py-10 text-center">
                   <p className="text-sm text-violet-300/75">
-                    Select a <strong className="text-violet-200">map</strong> in
-                    the form to open the strat timeline and place agents on the
-                    layout.
+                    Select a <strong className="text-violet-200">map</strong>{" "}
+                    under Details to load the layout and place agents.
                   </p>
                 </div>
               )}
             </div>
           </div>
+
+          {selectedStratMap &&
+            stagesControlsMountEl &&
+            stratMapMountEl && (
+              <StratStageEditor
+                gameMap={selectedStratMap}
+                side={form.side}
+                compSlugs={form.agentSlots}
+                agentsCatalog={initialAgents}
+                stages={form.stratStages}
+                onStagesChange={(next) =>
+                  setForm((f) => ({ ...f, stratStages: next }))
+                }
+                controlsMountEl={stagesControlsMountEl}
+                mapMountEl={stratMapMountEl}
+              />
+            )}
 
           <div className="flex flex-wrap gap-3 border-t border-violet-900/35 pt-4">
             <button
