@@ -190,6 +190,11 @@ const SPAWN_ATK_STROKE = "#ffffff";
 const SPAWN_DEF_FILL = "#2563eb";
 const SPAWN_DEF_STROKE = "#ffffff";
 
+/** Breakable doorway polylines — emerald (vs orange lower walkable, red site, cyan grade, indigo toggle). */
+const BREAKABLE_DOORWAY_STROKE = "rgb(16, 185, 129)";
+const BREAKABLE_DOORWAY_STROKE_HI = "rgb(167, 243, 208)";
+const BREAKABLE_DOORWAY_VERTEX = "rgb(52, 211, 153)";
+
 /**
  * Elevation walkable polygons: lower ≈ ground (“hell”), upper ≈ raised (“heaven”).
  * Warm ember/stone vs cool sky reads clearly when both stack on one minimap.
@@ -348,7 +353,7 @@ function overlayPassiveFill(
     case "grade":
       return "rgba(34,211,238,0.5)";
     case "breakable_doorway":
-      return "rgba(234,88,54,0.5)";
+      return "rgba(16, 185, 129, 0.5)";
     case "toggle_door":
       return "rgba(99,102,241,0.5)";
     default:
@@ -376,7 +381,7 @@ function overlayPassiveFillHover(
     case "grade":
       return "rgba(165,243,252,0.98)";
     case "breakable_doorway":
-      return "rgba(251,146,60,0.55)";
+      return "rgba(52, 211, 153, 0.55)";
     case "toggle_door":
       return "rgba(129,140,248,0.55)";
     default:
@@ -402,7 +407,7 @@ function overlayActiveVertexFill(
     case "grade":
       return "rgb(103,232,249)";
     case "breakable_doorway":
-      return "rgb(251,146,60)";
+      return BREAKABLE_DOORWAY_VERTEX;
     case "toggle_door":
       return "rgb(165,180,252)";
     default:
@@ -535,7 +540,7 @@ function DoorwayOverlaySvg({
           cx={p.x}
           cy={p.y}
           r={r}
-          fill="rgb(234,88,54)"
+          fill={BREAKABLE_DOORWAY_STROKE}
           pointerEvents="none"
         />
       );
@@ -554,7 +559,9 @@ function DoorwayOverlaySvg({
   const d = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
 
   if (sh.kind === "breakable_doorway") {
-    const stroke = highlight ? "rgb(254,202,165)" : "rgb(234,88,54)";
+    const stroke = highlight
+      ? BREAKABLE_DOORWAY_STROKE_HI
+      : BREAKABLE_DOORWAY_STROKE;
     return (
       <path
         d={d}
@@ -831,7 +838,14 @@ export function MapShapeEditor({
       const ghost = editorMeta.ghost_other_floor !== false;
       if (f === af) return 1;
       if (!ghost) return 0;
-      if (emphasizeOverlayId === sh.id) return 0.88;
+      /** Upper (sky/cool) reads brighter than lower (warm); ghost it harder when inactive. */
+      const upperGhosted = f === "upper" && af === "lower";
+      if (emphasizeOverlayId === sh.id) {
+        if (upperGhosted && sh.kind === "elevation") return 0.68;
+        return upperGhosted ? 0.76 : 0.88;
+      }
+      if (upperGhosted && sh.kind === "elevation") return 0.16;
+      if (upperGhosted) return 0.22;
       return 0.38;
     },
     [
@@ -2245,7 +2259,6 @@ export function MapShapeEditor({
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden">
       <div className="flex shrink-0 flex-wrap items-start justify-between gap-3">
         <details
-          open
           className="min-w-0 flex-1 overflow-hidden rounded-lg border border-violet-800/35 bg-slate-950/40 [&[open]>summary_.chevron-map-h]:rotate-90"
         >
           <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-left [&::-webkit-details-marker]:hidden">
@@ -2389,7 +2402,7 @@ export function MapShapeEditor({
                   }
                   className={`btn-secondary inline-flex shrink-0 items-center gap-1 px-2 py-1 ${
                     (editorMeta.active_floor ?? "lower") === "lower"
-                      ? "border-sky-500/45 bg-sky-950/35 text-sky-100"
+                      ? "border-amber-600/45 bg-amber-950/30 text-amber-100"
                       : ""
                   }`}
                   title="Lower floor: new overlays go here; drawn below upper in this view"
@@ -2403,7 +2416,7 @@ export function MapShapeEditor({
                   }
                   className={`btn-secondary inline-flex shrink-0 items-center gap-1 px-2 py-1 ${
                     (editorMeta.active_floor ?? "lower") === "upper"
-                      ? "border-violet-400/45 bg-violet-950/40 text-violet-100"
+                      ? "border-sky-500/45 bg-sky-950/30 text-sky-100"
                       : ""
                   }`}
                   title="Upper floor: new overlays here; drawn above lower when both are visible"
@@ -3075,80 +3088,82 @@ export function MapShapeEditor({
             </div>
           </div>
 
-          {sidebarTab === "map-shape" && (
-          <div>
-            <span className="label">Tool</span>
-            <div className="mt-2 flex rounded-lg border border-violet-800/50 p-0.5">
-              <button
-                type="button"
-                onClick={() => {
-                  setTool("draw");
-                  setSelection(null);
-                }}
-                className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-2 text-sm font-medium ${
-                  tool === "draw"
-                    ? "bg-violet-600 text-white"
-                    : "text-violet-200/70 hover:text-white"
-                }`}
-              >
-                <Pencil className="h-4 w-4" />
-                Draw
-              </button>
-              <button
-                type="button"
-                onClick={() => setTool("edit")}
-                className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-2 text-sm font-medium ${
-                  tool === "edit"
-                    ? "bg-slate-600 text-white"
-                    : "text-violet-200/70 hover:text-white"
-                }`}
-              >
-                <Move className="h-4 w-4" />
-                Edit
-              </button>
-            </div>
-            {tool === "draw" && (
-              <div className="mt-2">
-                <span className="text-[11px] text-violet-300/55">Draw shape</span>
-                <div className="mt-1 flex rounded-lg border border-violet-800/40 p-0.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDrawShapeMode("polygon");
-                      setPendingCircle(null);
-                    }}
-                    className={`flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium ${
-                      drawShapeMode === "polygon"
-                        ? "bg-violet-600 text-white"
-                        : "text-violet-200/70 hover:text-white"
-                    }`}
-                  >
-                    Polygon
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDrawShapeMode("circle");
-                      setPendingCircle(null);
-                    }}
-                    className={`flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium ${
-                      drawShapeMode === "circle"
-                        ? "bg-violet-600 text-white"
-                        : "text-violet-200/70 hover:text-white"
-                    }`}
-                  >
-                    <CircleIcon className="h-3.5 w-3.5" />
-                    Circle
-                  </button>
-                </div>
-                <p className="mt-1 text-[11px] text-violet-300/45">
-                  {drawShapeMode === "circle"
-                    ? "First click: center. Second click: radius (distance from center)."
-                    : "Each click adds a vertex; shapes close automatically when complete."}
-                </p>
+          {(sidebarTab === "map-shape" || sidebarTab === "objects") && (
+            <div>
+              <span className="label">Tool</span>
+              <div className="mt-2 flex rounded-lg border border-violet-800/50 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTool("draw");
+                    setSelection(null);
+                  }}
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-2 text-sm font-medium ${
+                    tool === "draw"
+                      ? "bg-violet-600 text-white"
+                      : "text-violet-200/70 hover:text-white"
+                  }`}
+                >
+                  <Pencil className="h-4 w-4" />
+                  Draw
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTool("edit")}
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-2 text-sm font-medium ${
+                    tool === "edit"
+                      ? "bg-slate-600 text-white"
+                      : "text-violet-200/70 hover:text-white"
+                  }`}
+                >
+                  <Move className="h-4 w-4" />
+                  Edit
+                </button>
               </div>
-            )}
-          </div>
+              {tool === "draw" && (
+                <div className="mt-2">
+                  <span className="text-[11px] text-violet-300/55">
+                    Draw shape
+                  </span>
+                  <div className="mt-1 flex rounded-lg border border-violet-800/40 p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDrawShapeMode("polygon");
+                        setPendingCircle(null);
+                      }}
+                      className={`flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium ${
+                        drawShapeMode === "polygon"
+                          ? "bg-violet-600 text-white"
+                          : "text-violet-200/70 hover:text-white"
+                      }`}
+                    >
+                      Polygon
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDrawShapeMode("circle");
+                        setPendingCircle(null);
+                      }}
+                      className={`flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium ${
+                        drawShapeMode === "circle"
+                          ? "bg-violet-600 text-white"
+                          : "text-violet-200/70 hover:text-white"
+                      }`}
+                    >
+                      <CircleIcon className="h-3.5 w-3.5" />
+                      Circle
+                    </button>
+                  </div>
+                  <p className="mt-1 text-[11px] text-violet-300/45">
+                    {drawShapeMode === "circle"
+                      ? "First click: center. Second click: radius (distance from center)."
+                      : "Each click adds a vertex; shapes close automatically when complete."}
+                  </p>
+                </div>
+              )}
+            </div>
           )}
 
           {sidebarTab === "annotation" && (
@@ -3161,7 +3176,6 @@ export function MapShapeEditor({
             </p>
             <div className="mt-3 space-y-2">
               <details
-                open
                 className="overflow-hidden rounded-lg border border-teal-800/40 bg-slate-950/30 [&[open]>summary_.chevron-ann]:rotate-90"
               >
                 <summary className="flex cursor-pointer list-none items-center gap-2 px-2 py-2 text-sm font-medium text-teal-100/95 hover:bg-teal-950/35 [&::-webkit-details-marker]:hidden">
@@ -3194,7 +3208,6 @@ export function MapShapeEditor({
               </details>
 
               <details
-                open
                 className="overflow-hidden rounded-lg border border-fuchsia-900/35 bg-slate-950/30 [&[open]>summary_.chevron-ann]:rotate-90"
               >
                 <summary className="flex cursor-pointer list-none items-center gap-2 px-2 py-2 text-sm font-medium text-fuchsia-100/95 hover:bg-fuchsia-950/25 [&::-webkit-details-marker]:hidden">
@@ -3333,7 +3346,6 @@ export function MapShapeEditor({
               </details>
 
               <details
-                open
                 className="overflow-hidden rounded-lg border border-violet-800/40 bg-slate-950/30 [&[open]>summary_.chevron-ann]:rotate-90"
               >
                 <summary className="flex cursor-pointer list-none items-center gap-2 px-2 py-2 text-sm font-medium text-violet-100/95 hover:bg-violet-950/35 [&::-webkit-details-marker]:hidden">
@@ -3735,7 +3747,6 @@ export function MapShapeEditor({
                 Outer boundary (attack)
               </button>
               <details
-                open
                 className="overflow-hidden rounded-lg border border-pink-800/35 bg-pink-950/15 [&[open]>summary_.chevron-ov]:rotate-90"
               >
                 <summary className="flex cursor-pointer list-none items-center gap-2 px-2 py-2 text-sm font-medium text-pink-100/95 hover:bg-pink-950/35 [&::-webkit-details-marker]:hidden">
@@ -3848,7 +3859,7 @@ export function MapShapeEditor({
                     ) : kind === "grade" ? (
                       <ArrowUpFromLine className="h-4 w-4 shrink-0 text-cyan-300" />
                     ) : kind === "breakable_doorway" ? (
-                      <Hammer className="h-4 w-4 shrink-0 text-orange-300" />
+                      <Hammer className="h-4 w-4 shrink-0 text-emerald-400" />
                     ) : (
                       <DoorClosed className="h-4 w-4 shrink-0 text-indigo-300" />
                     );
@@ -3869,7 +3880,6 @@ export function MapShapeEditor({
                   return (
                     <details
                       key={kind}
-                      open
                       className="overflow-hidden rounded-lg border border-violet-800/35 bg-slate-900/40 [&[open]>summary_.chevron-ov]:rotate-90"
                     >
                       <summary className="flex cursor-pointer list-none items-center gap-2 px-2 py-2 text-sm font-medium text-violet-100 hover:bg-violet-950/35 [&::-webkit-details-marker]:hidden">
@@ -3898,7 +3908,7 @@ export function MapShapeEditor({
                                       : "rounded-lg border border-amber-600/45 bg-amber-950/30 p-1"
                                     : activeOv &&
                                         sh.kind === "breakable_doorway"
-                                    ? "rounded-lg border border-orange-500/40 bg-orange-950/25 p-1"
+                                    ? "rounded-lg border border-emerald-500/40 bg-emerald-950/25 p-1"
                                     : activeOv && sh.kind === "toggle_door"
                                       ? "rounded-lg border border-indigo-500/40 bg-indigo-950/25 p-1"
                                       : activeOv
