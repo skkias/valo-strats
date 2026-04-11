@@ -35,8 +35,8 @@ import {
   type ViewBoxRect,
 } from "@/lib/map-path";
 import {
-  labelRotationAfterCenterFlip,
   mapLabelTextSvgProps,
+  transformLocationLabelForViewBoxCenterFlip,
 } from "@/lib/map-label-layout";
 import {
   circleToGradeClosedPoints,
@@ -2033,28 +2033,10 @@ export function MapShapeEditor({
           const q = flip({ x: s.x, y: s.y });
           return { ...s, x: q.x, y: q.y };
         }),
-        location_labels: em.location_labels.map((l) => {
-          const q = flip({ x: l.x, y: l.y });
-          const text_anchor: MapLabelTextAnchor =
-            l.text_anchor === "left"
-              ? "right"
-              : l.text_anchor === "right"
-                ? "left"
-                : l.text_anchor === "top"
-                  ? "bottom"
-                  : l.text_anchor === "bottom"
-                    ? "top"
-                    : l.text_anchor;
-          return {
-            ...l,
-            x: q.x,
-            y: q.y,
-            text_anchor,
-            text_rotation_deg: labelRotationAfterCenterFlip(
-              l.text_rotation_deg ?? 0,
-            ),
-          };
-        }),
+        location_labels: em.location_labels.map((l) => ({
+          ...l,
+          ...transformLocationLabelForViewBoxCenterFlip(rect, rect.width, l),
+        })),
       };
     });
   }
