@@ -1,5 +1,9 @@
 import type { MapOverlayCircle, MapOverlayShape } from "@/types/catalog";
-import type { MapPoint } from "@/lib/map-path";
+import {
+  flipPointsOverHorizontalMidline,
+  type MapPoint,
+  type ViewBoxRect,
+} from "@/lib/map-path";
 import {
   clampPointInsidePlayableRegion,
   clampPointsToOutline,
@@ -77,4 +81,38 @@ export function sanitizeOverlayForSave(
   }
   const clamped = clampPointsToOutline(s.points, outer, holes);
   return { ...s, points: clamped, circle: null };
+}
+
+/**
+ * Horizontal mirror of an overlay for defense-side preview (matches `path_def` vs attack).
+ * Grade high-side is toggled so spikes stay on the correct flank after mirroring.
+ */
+export function mirrorOverlayForDefensePreview(
+  vb: ViewBoxRect,
+  sh: MapOverlayShape,
+): MapOverlayShape {
+  const flipSide =
+    sh.kind === "grade"
+      ? (((sh.gradeHighSide ?? 1) === 1 ? -1 : 1) as 1 | -1)
+      : undefined;
+  if (isCircleOverlay(sh) && sh.circle) {
+    const q = flipPointsOverHorizontalMidline(vb, [
+      { x: sh.circle.cx, y: sh.circle.cy },
+    ])[0]!;
+    const nc = { cx: q.x, cy: q.y, r: sh.circle.r };
+    if (sh.kind === "grade") {
+      return {
+        ...sh,
+        circle: nc,
+        points: circleToGradeClosedPoints(nc),
+        gradeHighSide: flipSide,
+      };
+    }
+    return { ...sh, circle: nc, points: [] };
+  }
+  const pts = flipPointsOverHorizontalMidline(vb, sh.points);
+  if (sh.kind === "grade") {
+    return { ...sh, points: pts, gradeHighSide: flipSide };
+  }
+  return { ...sh, points: pts };
 }

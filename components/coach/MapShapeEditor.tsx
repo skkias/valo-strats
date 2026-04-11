@@ -25,10 +25,12 @@ import { parseViewBox } from "@/lib/view-box";
 import {
   alignPointsHorizontal,
   alignPointsVertical,
-  flipPointsOverHorizontalMidline,
+  closedDefenseHoleRingsFromAttack,
+  defenseRingsFromAttack,
   flipPointsThroughViewBoxCenter,
   ringsToPathD,
   type MapPoint,
+  type ViewBoxRect,
 } from "@/lib/map-path";
 import { mapLabelTextSvgProps } from "@/lib/map-label-layout";
 import {
@@ -36,6 +38,7 @@ import {
   circleToPolygon,
   clampCircleInPlayableRegion,
   isCircleOverlay,
+  mirrorOverlayForDefensePreview,
   OVERLAY_CIRCLE_SEGMENTS,
   sanitizeOverlayForSave,
 } from "@/lib/map-overlay-geometry";
@@ -59,16 +62,20 @@ import {
   ArrowRight,
   ArrowUp,
   ArrowUpFromLine,
+  ArrowDownUp,
   BoxSelect,
   BrickWall,
   CheckCircle2,
   ChevronRight,
   Circle as CircleIcon,
   CircleSlash2,
+  DoorClosed,
+  DoorOpen,
   Eye,
   EyeOff,
   FlipHorizontal2,
   FlipVertical2,
+  Hammer,
   ImagePlus,
   Loader2,
   MapPin,
@@ -80,6 +87,7 @@ import {
   Save,
   Shield,
   Swords,
+  Target,
   Trash2,
   Type,
   Undo2,
@@ -165,6 +173,10 @@ const VERTEX_STROKE_SCREEN_PX = 1.35;
 const PASSIVE_VERTEX_SCREEN_PX = 4.5;
 const PASSIVE_STROKE_SCREEN_PX = 1;
 
+/** Attacker spawn markers — complements defender sky-blue (`rgb(125,211,252)`). */
+const SPAWN_ATK_FILL = "#ff3e3e";
+const SPAWN_ATK_STROKE = "#ffffff";
+
 function previewOpenOrClosed(points: MapPoint[]): string | null {
   if (points.length === 0) return null;
   if (points.length === 1) {
@@ -178,12 +190,40 @@ function previewOpenOrClosed(points: MapPoint[]): string | null {
   return parts.join(" ");
 }
 
+function isOpenPolylineOverlayKind(kind: MapOverlayKind): boolean {
+  return (
+    kind === "grade" ||
+    kind === "breakable_doorway" ||
+    kind === "toggle_door"
+  );
+}
+
+/** Path for overlay fill/stroke; open polylines never auto-close with Z. */
+function previewOverlayStrokePath(
+  kind: MapOverlayKind,
+  points: MapPoint[],
+): string | null {
+  if (points.length === 0) return null;
+  if (points.length === 1) {
+    const p = points[0];
+    return `M ${p.x} ${p.y}`;
+  }
+  const [p0, ...rest] = points;
+  const parts = [`M ${p0.x} ${p0.y}`];
+  for (const p of rest) parts.push(`L ${p.x} ${p.y}`);
+  if (!isOpenPolylineOverlayKind(kind) && points.length >= 3) parts.push("Z");
+  return parts.join(" ");
+}
+
 /** Sidebar layer list order (grouping). */
 const OVERLAY_KIND_ORDER: MapOverlayKind[] = [
   "obstacle",
   "elevation",
   "wall",
+  "plant_site",
   "grade",
+  "breakable_doorway",
+  "toggle_door",
 ];
 
 function overlayPolygonStyle(kind: MapOverlayKind): {
@@ -197,6 +237,8 @@ function overlayPolygonStyle(kind: MapOverlayKind): {
       return { fill: "rgba(52,211,153,0.14)", stroke: "rgb(52,211,153)" };
     case "wall":
       return { fill: "rgba(148,163,184,0.18)", stroke: "rgb(148,163,184)" };
+    case "plant_site":
+      return { fill: "rgba(16,185,129,0.14)", stroke: "rgb(52,211,153)" };
     case "grade":
       return null;
     default:
@@ -218,6 +260,8 @@ function overlayPolygonStyleHover(
       return { fill: "rgba(45,212,191,0.4)", stroke: "rgb(204,251,241)" };
     case "wall":
       return { fill: "rgba(186,198,216,0.48)", stroke: "rgb(241,245,249)" };
+    case "plant_site":
+      return { fill: "rgba(45,212,191,0.38)", stroke: "rgb(204,251,241)" };
     default:
       return base;
   }
@@ -231,8 +275,14 @@ function overlayPassiveFill(kind: MapOverlayKind): string {
       return "rgba(52,211,153,0.45)";
     case "wall":
       return "rgba(148,163,184,0.5)";
+    case "plant_site":
+      return "rgba(52,211,153,0.5)";
     case "grade":
       return "rgba(34,211,238,0.5)";
+    case "breakable_doorway":
+      return "rgba(234,88,54,0.5)";
+    case "toggle_door":
+      return "rgba(99,102,241,0.5)";
     default:
       return "rgba(253,224,71,0.45)";
   }
@@ -250,8 +300,14 @@ function overlayPassiveFillHover(
       return "rgba(167,243,208,0.95)";
     case "wall":
       return "rgba(241,245,249,0.95)";
+    case "plant_site":
+      return "rgba(167,243,208,0.95)";
     case "grade":
       return "rgba(165,243,252,0.98)";
+    case "breakable_doorway":
+      return "rgba(251,146,60,0.55)";
+    case "toggle_door":
+      return "rgba(129,140,248,0.55)";
     default:
       return overlayPassiveFill(kind);
   }
@@ -269,8 +325,14 @@ function overlayActiveVertexFill(
       return "rgb(167,243,208)";
     case "wall":
       return "rgb(203,213,225)";
+    case "plant_site":
+      return "rgb(110,231,183)";
     case "grade":
       return "rgb(103,232,249)";
+    case "breakable_doorway":
+      return "rgb(251,146,60)";
+    case "toggle_door":
+      return "rgb(165,180,252)";
     default:
       return "rgb(253,224,71)";
   }
@@ -281,11 +343,14 @@ function GradeOverlaySvg({
   sh,
   vbWidth,
   highlight,
+  tone = "default",
 }: {
   sh: MapOverlayShape;
   vbWidth: number;
   /** Sidebar row hover → brighter stroke/fill on canvas */
   highlight?: boolean;
+  /** Cyan ghost for defense-side preview */
+  tone?: "default" | "defenseGhost";
 }) {
   const pts =
     isCircleOverlay(sh) && sh.circle
@@ -293,10 +358,35 @@ function GradeOverlaySvg({
       : sh.points;
   const sw = vbWidth * 0.0035 * (highlight ? 1.35 : 1);
   const side = sh.gradeHighSide ?? 1;
-  const lineStroke = highlight ? "rgb(207,250,254)" : "rgb(34,211,238)";
-  const spikeFill = highlight ? "rgba(207,250,254,0.98)" : "rgba(34,211,238,0.92)";
-  const dotFill = highlight ? "rgba(207,250,254,0.55)" : "rgba(34,211,238,0.35)";
-  const dotStroke = highlight ? "rgb(236,254,255)" : "rgb(34,211,238)";
+  const ghost = tone === "defenseGhost";
+  const lineStroke = ghost
+    ? highlight
+      ? "rgb(186,230,253)"
+      : "rgb(56,189,248)"
+    : highlight
+      ? "rgb(207,250,254)"
+      : "rgb(34,211,238)";
+  const spikeFill = ghost
+    ? highlight
+      ? "rgba(186,230,253,0.95)"
+      : "rgba(56,189,248,0.88)"
+    : highlight
+      ? "rgba(207,250,254,0.98)"
+      : "rgba(34,211,238,0.92)";
+  const dotFill = ghost
+    ? highlight
+      ? "rgba(186,230,253,0.5)"
+      : "rgba(56,189,248,0.35)"
+    : highlight
+      ? "rgba(207,250,254,0.55)"
+      : "rgba(34,211,238,0.35)";
+  const dotStroke = ghost
+    ? highlight
+      ? "rgb(224,242,254)"
+      : "rgb(125,211,252)"
+    : highlight
+      ? "rgb(236,254,255)"
+      : "rgb(34,211,238)";
   const spikeDepth = vbWidth * (highlight ? 0.012 : 0.01);
   const spikeHalfW = vbWidth * 0.0032;
   const spacing = vbWidth * 0.036;
@@ -367,6 +457,87 @@ function GradeOverlaySvg({
         );
       })}
     </g>
+  );
+}
+
+/** Breakable doorway or toggle door: open polylines (no fill). */
+function DoorwayOverlaySvg({
+  sh,
+  vbWidth,
+  highlight,
+  tone = "default",
+}: {
+  sh: MapOverlayShape;
+  vbWidth: number;
+  highlight: boolean;
+  tone?: "default" | "defenseGhost";
+}) {
+  const pts = sh.points;
+  const ghost = tone === "defenseGhost";
+  const swBase = vbWidth * 0.0038 * (highlight ? 1.2 : 1);
+
+  if (pts.length === 0) return null;
+  if (pts.length === 1) {
+    const p = pts[0]!;
+    const r = vbWidth * 0.007;
+    if (sh.kind === "breakable_doorway") {
+      const fill = ghost ? "rgb(125,211,252)" : "rgb(234,88,54)";
+      return (
+        <circle cx={p.x} cy={p.y} r={r} fill={fill} pointerEvents="none" />
+      );
+    }
+    const fill = ghost ? "rgb(125,211,252)" : "rgb(99,102,241)";
+    return (
+      <circle cx={p.x} cy={p.y} r={r} fill={fill} pointerEvents="none" />
+    );
+  }
+
+  const d = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+
+  if (sh.kind === "breakable_doorway") {
+    const stroke = ghost
+      ? "rgb(56,189,248)"
+      : highlight
+        ? "rgb(254,202,165)"
+        : "rgb(234,88,54)";
+    return (
+      <path
+        d={d}
+        fill="none"
+        stroke={stroke}
+        strokeWidth={swBase * (ghost ? 0.9 : 1)}
+        strokeDasharray={ghost ? "5 4" : "6 4 2 4"}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        pointerEvents="none"
+      />
+    );
+  }
+
+  const open = sh.door_is_open === true;
+  const stroke = ghost
+    ? "rgb(125,211,252)"
+    : open
+      ? highlight
+        ? "rgb(199,210,254)"
+        : "rgb(129,140,248)"
+      : highlight
+        ? "rgb(199,210,254)"
+        : "rgb(79,70,229)";
+  const dash = open || ghost ? "10 6" : undefined;
+  const wmul = open ? 0.88 : 1.12;
+  return (
+    <path
+      d={d}
+      fill="none"
+      stroke={stroke}
+      strokeWidth={swBase * wmul * (ghost ? 0.85 : 1)}
+      strokeDasharray={dash}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      pointerEvents="none"
+      opacity={open && !ghost ? 0.9 : 1}
+    />
   );
 }
 
@@ -571,33 +742,24 @@ export function MapShapeEditor({
   const annMarkerR = useMemo(() => vb.width * 0.014, [vb.width]);
   const labelFontSize = useMemo(() => vb.width * 0.026, [vb.width]);
 
-  const defOuter = useMemo(
-    () =>
-      flipPointsOverHorizontalMidline(
-        {
-          minX: vb.minX,
-          minY: vb.minY,
-          width: vb.width,
-          height: vb.height,
-        },
-        outlineOuter,
-      ),
-    [outlineOuter, vb],
+  const vbRect = useMemo(
+    (): ViewBoxRect => ({
+      minX: vb.minX,
+      minY: vb.minY,
+      width: vb.width,
+      height: vb.height,
+    }),
+    [vb.minX, vb.minY, vb.width, vb.height],
   );
-  const defHoles = useMemo(
-    () =>
-      outlineHoles.map((h) =>
-        flipPointsOverHorizontalMidline(
-          {
-            minX: vb.minX,
-            minY: vb.minY,
-            width: vb.width,
-            height: vb.height,
-          },
-          h,
-        ),
-      ),
-    [outlineHoles, vb],
+
+  const { defOuter, defHoles } = useMemo(() => {
+    const d = defenseRingsFromAttack(vbRect, outlineOuter, outlineHoles);
+    return { defOuter: d.outer, defHoles: d.holes };
+  }, [vbRect, outlineOuter, outlineHoles]);
+
+  const defensePreviewOverlays = useMemo(
+    () => overlays.map((sh) => mirrorOverlayForDefensePreview(vbRect, sh)),
+    [overlays, vbRect],
   );
 
   const outlineAtkD = useMemo(() => {
@@ -609,12 +771,15 @@ export function MapShapeEditor({
   }, [outlineOuter, outlineHoles]);
 
   const outlineDefD = useMemo(() => {
-    const closedHoles = defHoles.filter((h) => h.length >= 3);
+    const closedDefHoles = closedDefenseHoleRingsFromAttack(
+      outlineHoles,
+      defHoles,
+    );
     if (defOuter.length >= 3) {
-      return ringsToPathD(defOuter, closedHoles);
+      return ringsToPathD(defOuter, closedDefHoles);
     }
     return previewOpenOrClosed(defOuter);
-  }, [defOuter, defHoles]);
+  }, [defOuter, defHoles, outlineHoles]);
 
   useEffect(() => {
     if (!refUrl) {
@@ -888,7 +1053,9 @@ export function MapShapeEditor({
         if (!sh) return false;
         if (isCircleOverlay(sh)) return false;
         points = sh.points;
-        closed = sh.kind === "grade" ? false : points.length >= 3;
+        closed = isOpenPolylineOverlayKind(sh.kind)
+          ? false
+          : points.length >= 3;
       }
 
       if (points.length < 2) return false;
@@ -1614,7 +1781,15 @@ export function MapShapeEditor({
       ...list,
       kind === "grade"
         ? { id, kind, points: [], gradeHighSide: 1 as const, circle: undefined }
-        : { id, kind, points: [], circle: undefined },
+        : kind === "toggle_door"
+          ? {
+              id,
+              kind,
+              points: [],
+              circle: undefined,
+              door_is_open: false,
+            }
+          : { id, kind, points: [], circle: undefined },
     ]);
     setActiveLayer({ kind: "overlay", id });
     setTool("draw");
@@ -1633,6 +1808,18 @@ export function MapShapeEditor({
     );
   }
 
+  function toggleDoorOpen() {
+    if (activeLayer.kind !== "overlay") return;
+    const id = activeLayer.id;
+    setOverlays((list) =>
+      list.map((s) =>
+        s.id === id && s.kind === "toggle_door"
+          ? { ...s, door_is_open: !(s.door_is_open === true) }
+          : s,
+      ),
+    );
+  }
+
   function removeOverlay(id: string) {
     setOverlays((list) => list.filter((s) => s.id !== id));
     if (activeLayer.kind === "overlay" && activeLayer.id === id) {
@@ -1643,7 +1830,13 @@ export function MapShapeEditor({
 
   function swapAttackDefenseSides() {
     setBanner(null);
-    const rect = vbRef.current;
+    const p = parseViewBox(viewBox);
+    const rect: ViewBoxRect = {
+      minX: p.minX,
+      minY: p.minY,
+      width: p.width,
+      height: p.height,
+    };
     const { outer, holes } = outlineRingsRef.current;
     const nextOuter = flipPointsThroughViewBoxCenter(rect, outer);
     const nextHoles = holes.map((h) =>
@@ -1757,7 +1950,7 @@ export function MapShapeEditor({
     const pathAtk = ringsToPathD(outlineOuter, closedHoles);
     const pathDef = ringsToPathD(
       defOuter,
-      defHoles.filter((_, i) => (outlineHoles[i]?.length ?? 0) >= 3),
+      closedDefenseHoleRingsFromAttack(outlineHoles, defHoles),
     );
     const sanitizedOverlays =
       outlineReady
@@ -1889,6 +2082,34 @@ export function MapShapeEditor({
     [],
   );
 
+  const sideLabelsInverted = editorMeta.side_meaning_inverted === true;
+
+  const activeOverlayKindLabel =
+    activeLayer.kind === "overlay"
+      ? (() => {
+          const k = overlays.find((o) => o.id === activeLayer.id)?.kind;
+          if (!k) return "Overlay";
+          switch (k) {
+            case "obstacle":
+              return "obstacle";
+            case "elevation":
+              return "elevation";
+            case "wall":
+              return "wall";
+            case "grade":
+              return "grade";
+            case "breakable_doorway":
+              return "breakable doorway";
+            case "toggle_door":
+              return "toggle door";
+            case "plant_site":
+              return "plant site";
+            default:
+              return k;
+          }
+        })()
+      : "";
+
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden">
       <div className="flex shrink-0 flex-wrap items-start justify-between gap-3">
@@ -1901,12 +2122,16 @@ export function MapShapeEditor({
             <h2 className="text-xl font-semibold text-white">{initial.name}</h2>
           </summary>
           <p className="border-t border-violet-800/25 px-3 py-3 text-sm text-violet-200/60">
-            The cyan defense shape mirrors the purple attack outline. Add holes
-            to cut out areas inside the outline. Overlays (obstacles, elevation,
-            walls, grade lines) sit in the playable ring (not in holes); they stay
-            clipped as you edit. Use Edit to drag vertices, Shift+click to
-            multi-select, and click passive overlay vertices on the canvas to
-            select their layer.
+            The cyan shape is the horizontal mirror of the purple outline (saved as
+            <code className="text-violet-300/90"> path_def</code>). Cyan also shows a
+            dashed mirror of overlays. Add holes to cut out areas inside the outline.
+            Overlays sit in the playable ring (not in holes); they stay clipped as you
+            edit. Use <strong className="font-medium text-violet-200/80">
+              Invert atk/def meaning
+            </strong>{" "}
+            if your reference image has attack/defense reversed. Use Edit to drag
+            vertices, Shift+click to multi-select, and click passive overlay vertices
+            on the canvas to select their layer.
           </p>
         </details>
         <button
@@ -1954,14 +2179,29 @@ export function MapShapeEditor({
                 <span className="shrink-0 text-xs text-violet-300/45">
                   Or paste (Ctrl+V) anywhere on this page
                 </span>
-                <span className="inline-flex shrink-0 items-center gap-1 rounded border border-violet-800/40 px-2 py-0.5">
-                  <Swords className="h-3.5 w-3.5 text-violet-300" />
-                  Attack (editable)
-                </span>
-                <span className="inline-flex shrink-0 items-center gap-1 rounded border border-sky-800/40 px-2 py-0.5">
-                  <Shield className="h-3.5 w-3.5 text-sky-300" />
-                  Defense (auto mirror)
-                </span>
+                {sideLabelsInverted ? (
+                  <>
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded border border-violet-800/40 px-2 py-0.5">
+                      <Shield className="h-3.5 w-3.5 text-violet-300" />
+                      Defense (editable)
+                    </span>
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded border border-sky-800/40 px-2 py-0.5">
+                      <Swords className="h-3.5 w-3.5 text-sky-300" />
+                      Attack (auto mirror)
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded border border-violet-800/40 px-2 py-0.5">
+                      <Swords className="h-3.5 w-3.5 text-violet-300" />
+                      Attack (editable)
+                    </span>
+                    <span className="inline-flex shrink-0 items-center gap-1 rounded border border-sky-800/40 px-2 py-0.5">
+                      <Shield className="h-3.5 w-3.5 text-sky-300" />
+                      Defense (auto mirror)
+                    </span>
+                  </>
+                )}
                 <button
                   type="button"
                   onClick={() => setShowDefensePreview((v) => !v)}
@@ -1991,6 +2231,24 @@ export function MapShapeEditor({
                     <FlipVertical2 className="h-3 w-3" />
                   </span>
                   Swap sides
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setEditorMeta((m) => ({
+                      ...m,
+                      side_meaning_inverted: !m.side_meaning_inverted,
+                    }))
+                  }
+                  className={`btn-secondary inline-flex shrink-0 items-center gap-1 px-2 py-1 ${
+                    sideLabelsInverted
+                      ? "border-amber-600/50 bg-amber-950/30 text-amber-100"
+                      : ""
+                  }`}
+                  title="Swap which outline means attack vs defense for strats (purple still saves as path_atk; no geometry change)"
+                >
+                  <ArrowDownUp className="h-3.5 w-3.5" />
+                  Invert atk/def meaning
                 </button>
                 <span className="shrink-0 whitespace-nowrap text-violet-300/40">
                   Scroll to zoom. Right-drag to pan when zoomed. Drag the map
@@ -2049,7 +2307,7 @@ export function MapShapeEditor({
           )}
 
           <div
-            className="box-border flex min-h-0 w-full min-w-[var(--map-vp-min-w)] flex-1 overflow-auto rounded-xl border border-violet-500/25 bg-black/40 max-h-[min(100%,min(var(--map-vp-max-dvh),var(--map-vp-max-h)))]"
+            className="box-border flex min-h-0 w-full min-w-[var(--map-vp-min-w)] flex-1 select-none overflow-auto rounded-xl border border-violet-500/25 bg-black/40 max-h-[min(100%,min(var(--map-vp-max-dvh),var(--map-vp-max-h)))]"
             style={{ ...mapPanelVars, resize: "both" }}
             onKeyDown={(e) => e.stopPropagation()}
             onContextMenu={(e) => e.preventDefault()}
@@ -2059,10 +2317,10 @@ export function MapShapeEditor({
               role="img"
               aria-label="Map reference and trace canvas"
               viewBox={`${displayVb.minX} ${displayVb.minY} ${displayVb.width} ${displayVb.height}`}
-              className={`block h-full min-h-[var(--map-vp-min-h)] w-full min-w-[var(--map-vp-min-w)] touch-none bg-zinc-950 ${
+              className={`block h-full min-h-[var(--map-vp-min-h)] w-full min-w-[var(--map-vp-min-w)] touch-none select-none bg-zinc-950 ${
                 rightPanning ? "cursor-grabbing" : "cursor-crosshair"
               }`}
-              style={{ userSelect: tool === "edit" ? "none" : undefined }}
+              style={{ userSelect: "none" }}
               onPointerDown={onSvgPointerDown}
               onPointerMove={onSvgPointerMove}
               onPointerUp={endRightPan}
@@ -2125,6 +2383,66 @@ export function MapShapeEditor({
                     />
                   );
                 })()}
+              {showDefensePreview &&
+                outlineReady &&
+                defensePreviewOverlays.map((sh) => {
+                  if (
+                    sh.kind === "breakable_doorway" ||
+                    sh.kind === "toggle_door"
+                  ) {
+                    return (
+                      <DoorwayOverlaySvg
+                        key={`def-prev-${sh.id}`}
+                        sh={sh}
+                        vbWidth={vb.width}
+                        highlight={false}
+                        tone="defenseGhost"
+                      />
+                    );
+                  }
+                  if (sh.kind === "grade") {
+                    return (
+                      <GradeOverlaySvg
+                        key={`def-prev-${sh.id}`}
+                        sh={sh}
+                        vbWidth={vb.width}
+                        tone="defenseGhost"
+                      />
+                    );
+                  }
+                  if (isCircleOverlay(sh) && sh.circle) {
+                    const c = sh.circle;
+                    return (
+                      <circle
+                        key={`def-prev-${sh.id}`}
+                        cx={c.cx}
+                        cy={c.cy}
+                        r={c.r}
+                        fill="rgba(56,189,248,0.1)"
+                        stroke="rgb(56,189,248)"
+                        strokeWidth={vb.width * 0.0025}
+                        strokeDasharray="6 4"
+                        pointerEvents="none"
+                      />
+                    );
+                  }
+                  const d = previewOverlayStrokePath(sh.kind, sh.points);
+                  if (!d) return null;
+                  return (
+                    <path
+                      key={`def-prev-${sh.id}`}
+                      d={d}
+                      fill="rgba(56,189,248,0.08)"
+                      stroke="rgb(56,189,248)"
+                      strokeWidth={vb.width * 0.0028}
+                      strokeDasharray={
+                        sh.kind === "plant_site" ? "9 6" : "6 5"
+                      }
+                      strokeLinejoin="round"
+                      pointerEvents="none"
+                    />
+                  );
+                })}
               {outlineAtkD && (
                 <path
                   d={outlineAtkD}
@@ -2189,6 +2507,19 @@ export function MapShapeEditor({
               >
                 {overlays.map((sh) => {
                   const hl = sidebarHoverOverlayId === sh.id;
+                  if (
+                    sh.kind === "breakable_doorway" ||
+                    sh.kind === "toggle_door"
+                  ) {
+                    return (
+                      <DoorwayOverlaySvg
+                        key={sh.id}
+                        sh={sh}
+                        vbWidth={vb.width}
+                        highlight={hl}
+                      />
+                    );
+                  }
                   if (sh.kind === "grade") {
                     return (
                       <GradeOverlaySvg
@@ -2216,7 +2547,7 @@ export function MapShapeEditor({
                       />
                     );
                   }
-                  const d = previewOpenOrClosed(sh.points);
+                  const d = previewOverlayStrokePath(sh.kind, sh.points);
                   if (!d) return null;
                   const poly = overlayPolygonStyleHover(sh.kind, hl);
                   if (!poly) return null;
@@ -2228,6 +2559,9 @@ export function MapShapeEditor({
                       stroke={poly.stroke}
                       strokeWidth={vb.width * 0.003 * (hl ? 2.2 : 1)}
                       strokeLinejoin="round"
+                      strokeDasharray={
+                        sh.kind === "plant_site" ? "9 6" : undefined
+                      }
                       pointerEvents="none"
                     />
                   );
@@ -2430,8 +2764,8 @@ export function MapShapeEditor({
               <g style={{ pointerEvents: "auto" }}>
                 {editorMeta.spawn_markers.map((s) => {
                   const atk = s.side === "atk";
-                  const fill = atk ? "rgb(196,181,253)" : "rgb(125,211,252)";
-                  const stroke = atk ? "rgb(250,250,250)" : "rgb(224,242,254)";
+                  const fill = atk ? SPAWN_ATK_FILL : "rgb(125,211,252)";
+                  const stroke = atk ? SPAWN_ATK_STROKE : "rgb(224,242,254)";
                   return (
                     <circle
                       key={`spawn-${s.id}`}
@@ -2866,11 +3200,11 @@ export function MapShapeEditor({
                       }
                       className={`inline-flex items-center gap-1 rounded-md border px-2 py-1.5 text-xs font-medium ${
                         placeMode === "spawn-atk"
-                          ? "border-violet-500/60 bg-violet-950/50 text-white"
+                          ? "border-red-500/65 bg-red-950/45 text-white"
                           : "border-violet-800/45 text-violet-200/75 hover:bg-violet-950/35"
                       }`}
                     >
-                      <Swords className="h-3.5 w-3.5" />
+                      <Swords className="h-3.5 w-3.5 text-red-400" />
                       Atk spawn
                     </button>
                     <button
@@ -2932,7 +3266,7 @@ export function MapShapeEditor({
                         >
                           <span className="inline-flex items-center gap-1.5">
                             {s.side === "atk" ? (
-                              <Swords className="h-3.5 w-3.5 text-violet-300" />
+                              <Swords className="h-3.5 w-3.5 text-red-400" />
                             ) : (
                               <Shield className="h-3.5 w-3.5 text-sky-300" />
                             )}
@@ -3294,8 +3628,14 @@ export function MapShapeEditor({
                       <Mountain className="h-4 w-4 shrink-0 text-emerald-300" />
                     ) : kind === "wall" ? (
                       <BrickWall className="h-4 w-4 shrink-0 text-slate-300" />
-                    ) : (
+                    ) : kind === "plant_site" ? (
+                      <Target className="h-4 w-4 shrink-0 text-emerald-300" />
+                    ) : kind === "grade" ? (
                       <ArrowUpFromLine className="h-4 w-4 shrink-0 text-cyan-300" />
+                    ) : kind === "breakable_doorway" ? (
+                      <Hammer className="h-4 w-4 shrink-0 text-orange-300" />
+                    ) : (
+                      <DoorClosed className="h-4 w-4 shrink-0 text-indigo-300" />
                     );
                   const sectionTitle =
                     kind === "obstacle"
@@ -3304,7 +3644,13 @@ export function MapShapeEditor({
                         ? "Elevation"
                         : kind === "wall"
                           ? "Walls"
-                          : "Grade lines";
+                          : kind === "plant_site"
+                            ? "Plant sites"
+                            : kind === "grade"
+                              ? "Grade lines"
+                              : kind === "breakable_doorway"
+                                ? "Breakable doorways"
+                                : "Toggle doors";
                   return (
                     <details
                       key={kind}
@@ -3329,11 +3675,18 @@ export function MapShapeEditor({
                               ? "rounded-lg border border-cyan-500/40 bg-cyan-950/20 p-1"
                               : activeOv && sh.kind === "wall"
                                 ? "rounded-lg border border-slate-500/40 bg-slate-900/25 p-1"
-                                : activeOv && sh.kind === "elevation"
-                                  ? "rounded-lg border border-emerald-500/35 bg-emerald-950/20 p-1"
-                                  : activeOv
-                                    ? "rounded-lg border border-amber-500/40 bg-amber-950/20 p-1"
-                                    : "";
+                                : activeOv && sh.kind === "plant_site"
+                                  ? "rounded-lg border border-emerald-500/40 bg-emerald-950/25 p-1"
+                                  : activeOv && sh.kind === "elevation"
+                                    ? "rounded-lg border border-emerald-500/35 bg-emerald-950/20 p-1"
+                                    : activeOv &&
+                                        sh.kind === "breakable_doorway"
+                                    ? "rounded-lg border border-orange-500/40 bg-orange-950/25 p-1"
+                                    : activeOv && sh.kind === "toggle_door"
+                                      ? "rounded-lg border border-indigo-500/40 bg-indigo-950/25 p-1"
+                                      : activeOv
+                                        ? "rounded-lg border border-amber-500/40 bg-amber-950/20 p-1"
+                                        : "";
                           return (
                             <div
                               key={sh.id}
@@ -3427,6 +3780,20 @@ export function MapShapeEditor({
               </button>
               <button
                 type="button"
+                onClick={() => addOverlay("plant_site")}
+                disabled={!outlineReady}
+                title={
+                  outlineReady
+                    ? "Closed polygon: plantable site / spike zone border (dashed green)"
+                    : "Define the map outline first"
+                }
+                className="btn-secondary inline-flex items-center gap-1 text-xs disabled:opacity-40"
+              >
+                <Target className="h-3.5 w-3.5" />
+                Plant site
+              </button>
+              <button
+                type="button"
                 onClick={() => addOverlay("grade")}
                 disabled={!outlineReady}
                 title={
@@ -3438,6 +3805,34 @@ export function MapShapeEditor({
               >
                 <ArrowUpFromLine className="h-3.5 w-3.5" />
                 Grade
+              </button>
+              <button
+                type="button"
+                onClick={() => addOverlay("breakable_doorway")}
+                disabled={!outlineReady}
+                title={
+                  outlineReady
+                    ? "Breakable doorway: open polyline along the opening (does not auto-close)"
+                    : "Define the map outline first"
+                }
+                className="btn-secondary inline-flex items-center gap-1 text-xs disabled:opacity-40"
+              >
+                <Hammer className="h-3.5 w-3.5" />
+                Breakable doorway
+              </button>
+              <button
+                type="button"
+                onClick={() => addOverlay("toggle_door")}
+                disabled={!outlineReady}
+                title={
+                  outlineReady
+                    ? "Toggle door: polyline for door width; use sidebar to flip open vs closed"
+                    : "Define the map outline first"
+                }
+                className="btn-secondary inline-flex items-center gap-1 text-xs disabled:opacity-40"
+              >
+                <DoorClosed className="h-3.5 w-3.5" />
+                Toggle door
               </button>
             </div>
             {activeLayer.kind === "overlay" &&
@@ -3451,6 +3846,29 @@ export function MapShapeEditor({
                 >
                   <ArrowLeftRight className="h-3.5 w-3.5" />
                   Flip higher side
+                </button>
+              )}
+            {activeLayer.kind === "overlay" &&
+              overlays.find((o) => o.id === activeLayer.id)?.kind ===
+                "toggle_door" && (
+                <button
+                  type="button"
+                  onClick={toggleDoorOpen}
+                  className="btn-secondary mt-2 inline-flex w-full items-center justify-center gap-1.5 text-xs"
+                  title="Switch between closed (solid) and open (dashed) door visualization"
+                >
+                  {overlays.find((o) => o.id === activeLayer.id)
+                    ?.door_is_open === true ? (
+                    <>
+                      <DoorOpen className="h-3.5 w-3.5" />
+                      Mark door closed
+                    </>
+                  ) : (
+                    <>
+                      <DoorClosed className="h-3.5 w-3.5" />
+                      Mark door open
+                    </>
+                  )}
                 </button>
               )}
             {!outlineReady && (
@@ -3537,8 +3955,7 @@ export function MapShapeEditor({
                 ? activeLayer.holeIndex === null
                   ? "Outer"
                   : `Hole ${activeLayer.holeIndex + 1}`
-                : overlays.find((o) => o.id === activeLayer.id)?.kind ??
-                  "Overlay"}
+                : activeOverlayKindLabel}
             </strong>{" "}
             · {activeCount} pts
           </p>

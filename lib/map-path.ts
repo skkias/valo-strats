@@ -109,6 +109,31 @@ export function flipPointsThroughViewBoxCenter(
   return points.map((p) => ({ x: 2 * midX - p.x, y: 2 * midY - p.y }));
 }
 
+/**
+ * Defense outline rings: horizontal mirror of attack rings in viewBox space
+ * (same transform used for `path_def` vs `path_atk`).
+ */
+export function defenseRingsFromAttack(
+  vb: ViewBoxRect,
+  outer: MapPoint[],
+  holes: MapPoint[][],
+): MapOutlineRings {
+  return {
+    outer: flipPointsOverHorizontalMidline(vb, outer),
+    holes: holes.map((h) => flipPointsOverHorizontalMidline(vb, h)),
+  };
+}
+
+/** Closed-hole rings for `path_def` / defense preview (aligned with attack hole indices). */
+export function closedDefenseHoleRingsFromAttack(
+  outlineHoles: MapPoint[][],
+  defHoles: MapPoint[][],
+): MapPoint[][] {
+  return defHoles.filter(
+    (_, i) => (outlineHoles[i]?.length ?? 0) >= 3,
+  );
+}
+
 /** Align selected vertices to the same x (vertical axis / column). */
 export function alignPointsVertical(
   points: MapPoint[],

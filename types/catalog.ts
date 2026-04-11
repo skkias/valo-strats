@@ -23,12 +23,23 @@ export type MapOverlayKind =
   /**
    * Polyline: higher vs lower ground along each segment (left of each p[i]→p[i+1]).
    */
-  | "grade";
+  | "grade"
+  /** Open polyline along a breakable doorway / destructible opening. */
+  | "breakable_doorway"
+  /**
+   * Open polyline for a door width; use `door_is_open` for swing vs closed slab.
+   */
+  | "toggle_door"
+  /** Closed polygon: bomb plant zone / plantable site outline. */
+  | "plant_site";
 
 /** Circle overlay in viewBox space (`r` in user units). */
 export type MapOverlayCircle = { cx: number; cy: number; r: number };
 
-/** Polygons (`obstacle` | `elevation` | `wall`) or a grade polyline in viewBox space. */
+/**
+ * Polygons (`obstacle` | `elevation` | `wall` | `plant_site`), polylines (`grade` | door kinds),
+ * or sampled circles in viewBox space.
+ */
 export interface MapOverlayShape {
   id: string;
   kind: MapOverlayKind;
@@ -43,6 +54,8 @@ export interface MapOverlayShape {
    * -1 = higher to the right. Ignored for polygon kinds.
    */
   gradeHighSide?: 1 | -1;
+  /** For `toggle_door` only: visual open (dashed) vs closed (solid) door along the polyline. */
+  door_is_open?: boolean;
 }
 
 /** Row from `public.maps` — reference art + vector outlines per side. */
@@ -105,6 +118,11 @@ export interface MapLocationLabel {
 
 export interface MapEditorMeta {
   show_reference_image: boolean;
+  /**
+   * When true, the purple outline (`path_atk`) is treated as defense territory and
+   * the mirrored cyan shape (`path_def`) as attack for strats and labels.
+   */
+  side_meaning_inverted?: boolean;
   spawn_markers: MapSpawnMarker[];
   location_labels: MapLocationLabel[];
 }

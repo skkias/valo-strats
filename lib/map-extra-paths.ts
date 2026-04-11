@@ -25,7 +25,15 @@ function asFiniteNumber(v: unknown): number | null {
 function parseKind(raw: unknown): MapOverlayKind | null {
   if (typeof raw !== "string") return null;
   const k = raw.trim().toLowerCase();
-  if (k === "obstacle" || k === "elevation" || k === "wall" || k === "grade") {
+  if (
+    k === "obstacle" ||
+    k === "elevation" ||
+    k === "wall" ||
+    k === "grade" ||
+    k === "breakable_doorway" ||
+    k === "toggle_door" ||
+    k === "plant_site"
+  ) {
     return k;
   }
   return null;
@@ -64,6 +72,10 @@ export function normalizeExtraPaths(raw: unknown): MapOverlayShape[] {
       const g = o.gradeHighSide;
       gradeHighSide = g === -1 ? -1 : 1;
     }
+    let door_is_open: boolean | undefined;
+    if (kind === "toggle_door") {
+      door_is_open = o.door_is_open === true;
+    }
     let circle: MapOverlayCircle | null = null;
     const cr = o.circle;
     if (cr && typeof cr === "object") {
@@ -90,10 +102,23 @@ export function normalizeExtraPaths(raw: unknown): MapOverlayShape[] {
           gradeHighSide,
         });
       } else {
-        out.push({ id, kind, points: [], circle, gradeHighSide });
+        out.push({
+          id,
+          kind,
+          points: [],
+          circle,
+          gradeHighSide,
+          ...(door_is_open !== undefined ? { door_is_open } : {}),
+        });
       }
     } else {
-      out.push({ id, kind, points, gradeHighSide });
+      out.push({
+        id,
+        kind,
+        points,
+        gradeHighSide,
+        ...(door_is_open !== undefined ? { door_is_open } : {}),
+      });
     }
   }
   return out;

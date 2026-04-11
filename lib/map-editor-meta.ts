@@ -52,6 +52,7 @@ function newId(): string {
 export function defaultEditorMeta(): MapEditorMeta {
   return {
     show_reference_image: true,
+    side_meaning_inverted: false,
     spawn_markers: [],
     location_labels: [],
   };
@@ -63,6 +64,9 @@ export function normalizeEditorMeta(raw: unknown): MapEditorMeta {
   const o = raw as Record<string, unknown>;
   if (typeof o.show_reference_image === "boolean") {
     d.show_reference_image = o.show_reference_image;
+  }
+  if (typeof o.side_meaning_inverted === "boolean") {
+    d.side_meaning_inverted = o.side_meaning_inverted;
   }
   const spawns: MapSpawnMarker[] = [];
   if (Array.isArray(o.spawn_markers)) {
