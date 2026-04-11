@@ -334,11 +334,25 @@ export type StratMapViewerProps = {
   children?: ReactNode;
   /** When false, all layers stay visible and the checkbox strip is hidden. */
   showLayerToggles?: boolean;
+  /** When false, hides the zoom hint / Map shapes link below the SVG. */
+  showFooter?: boolean;
+  /**
+   * Stretch the map to fill a flex parent (coach strat editor). Keeps wheel zoom
+   * and right-drag pan behavior.
+   */
+  embed?: boolean;
 };
 
 export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
   function StratMapViewer(
-    { gameMap, side, children, showLayerToggles = true },
+    {
+      gameMap,
+      side,
+      children,
+      showLayerToggles = true,
+      showFooter = true,
+      embed = false,
+    },
     ref,
   ) {
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -529,7 +543,13 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
   );
 
   return (
-    <div className="space-y-3">
+    <div
+      className={
+        embed
+          ? "flex h-full min-h-0 flex-col gap-2"
+          : "space-y-3"
+      }
+    >
       {showLayerToggles ? (
         <div className="flex flex-wrap gap-2">
           {toggleRow("territoryOutline", "Playable outline")}
@@ -549,22 +569,37 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
       ) : null}
 
       <div
-        className="overflow-hidden rounded-xl border border-violet-500/25 bg-slate-950/80"
-        style={{
-          width: "100%",
-          maxHeight: `${MAP_VIEWPORT_MAX_DVH}dvh`,
-        }}
+        className={
+          embed
+            ? "flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-violet-500/25 bg-slate-950/80"
+            : "overflow-hidden rounded-xl border border-violet-500/25 bg-slate-950/80"
+        }
+        style={
+          embed
+            ? { width: "100%", minHeight: 0 }
+            : {
+                width: "100%",
+                maxHeight: `${MAP_VIEWPORT_MAX_DVH}dvh`,
+              }
+        }
       >
         <svg
           ref={setSvgRef}
           viewBox={vbStr}
-          className={`h-auto w-full select-none touch-none ${
-            rightPanning ? "cursor-grabbing" : "cursor-crosshair"
-          }`}
-          style={{
-            minHeight: MAP_VIEWPORT_MIN_H_PX,
-            maxHeight: `${MAP_VIEWPORT_MAX_DVH}dvh`,
-          }}
+          className={`w-full select-none touch-none ${
+            embed ? "block h-full min-h-[min(56dvh,720px)]" : "h-auto"
+          } ${rightPanning ? "cursor-grabbing" : "cursor-crosshair"}`}
+          style={
+            embed
+              ? {
+                  minHeight: MAP_VIEWPORT_MIN_H_PX,
+                  maxHeight: "100%",
+                }
+              : {
+                  minHeight: MAP_VIEWPORT_MIN_H_PX,
+                  maxHeight: `${MAP_VIEWPORT_MAX_DVH}dvh`,
+                }
+          }
           preserveAspectRatio="xMidYMid meet"
           role="img"
           aria-label={`Map preview (${side === "atk" ? "attack" : "defense"} view). Vector layers from the map editor.`}
@@ -771,19 +806,31 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
           {children}
         </svg>
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[11px] leading-relaxed text-violet-400/45">
-          Wheel: zoom · Right-drag: pan (when zoomed). Reference art stays in the
-          editor. Edit vectors on{" "}
-          <a
-            href={`/coach/maps/${gameMap.id}`}
-            className="text-violet-300/80 underline underline-offset-2 hover:text-violet-200"
-          >
-            Map shapes
-          </a>
-          .
-        </p>
-        {viewport ? (
+      {showFooter ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-[11px] leading-relaxed text-violet-400/45">
+            Wheel: zoom · Right-drag: pan (when zoomed). Reference art stays in the
+            editor. Edit vectors on{" "}
+            <a
+              href={`/coach/maps/${gameMap.id}`}
+              className="text-violet-300/80 underline underline-offset-2 hover:text-violet-200"
+            >
+              Map shapes
+            </a>
+            .
+          </p>
+          {viewport ? (
+            <button
+              type="button"
+              onClick={() => setViewport(null)}
+              className="shrink-0 rounded-md border border-violet-700/50 bg-slate-950/80 px-2 py-1 text-[11px] font-medium text-violet-200 hover:border-violet-500/50 hover:bg-violet-950/50"
+            >
+              Reset zoom
+            </button>
+          ) : null}
+        </div>
+      ) : viewport ? (
+        <div className="flex justify-end">
           <button
             type="button"
             onClick={() => setViewport(null)}
@@ -791,8 +838,8 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
           >
             Reset zoom
           </button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
   },

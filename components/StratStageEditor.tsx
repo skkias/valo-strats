@@ -97,6 +97,8 @@ export function StratStageEditor({
     name: string;
     ms: number;
   } | null>(null);
+  /** Left column: stage fields vs token placement controls. */
+  const [editorTab, setEditorTab] = useState<"stage" | "tokens">("stage");
 
   const didMountRef = useRef(false);
 
@@ -415,236 +417,272 @@ export function StratStageEditor({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="min-w-0 flex-1">
-          <span className="label">Stages</span>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            {stages.map((st, idx) => (
-              <div key={st.id} className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setActiveStageIndex(idx)}
-                  className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
-                    idx === activeStageIndex
-                      ? "border-violet-500/70 bg-violet-950/50 text-white"
-                      : "border-violet-800/40 bg-slate-950/50 text-violet-200/80 hover:border-violet-600/50"
-                  }`}
-                >
-                  {st.title || `Stage ${idx + 1}`}
-                </button>
-                {stages.length > 1 ? (
-                  <button
-                    type="button"
-                    title="Remove stage"
-                    onClick={() => removeStage(idx)}
-                    className="rounded p-1 text-violet-400/60 hover:bg-fuchsia-950/40 hover:text-fuchsia-200"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                ) : null}
-              </div>
-            ))}
-            <button
-              type="button"
-              onClick={addStage}
-              className="btn-secondary inline-flex items-center gap-1 py-1.5 text-xs"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Stage
-            </button>
-          </div>
-        </div>
-        <div className="flex gap-1">
+    <div className="flex w-full min-h-0 flex-col gap-4 lg:min-h-[min(76dvh,940px)] lg:flex-row lg:items-stretch lg:gap-5">
+      <div className="flex min-h-0 w-full min-w-0 flex-col lg:max-w-md lg:shrink-0 xl:max-w-lg">
+        <div className="flex gap-1 rounded-lg border border-violet-800/45 bg-slate-950/70 p-0.5">
           <button
             type="button"
-            className="btn-secondary p-2"
-            disabled={activeStageIndex <= 0}
-            onClick={() =>
-              setActiveStageIndex((i) => Math.max(0, i - 1))
-            }
-            title="Previous stage"
+            onClick={() => setEditorTab("stage")}
+            className={`min-w-0 flex-1 rounded-md px-3 py-2 text-center text-sm font-medium transition ${
+              editorTab === "stage"
+                ? "bg-violet-600 text-white shadow-md shadow-violet-900/30"
+                : "text-violet-300/80 hover:bg-violet-950/50 hover:text-violet-100"
+            }`}
           >
-            <ChevronLeft className="h-4 w-4" />
+            Stage
           </button>
           <button
             type="button"
-            className="btn-secondary p-2"
-            disabled={activeStageIndex >= stages.length - 1}
-            onClick={() =>
-              setActiveStageIndex((i) =>
-                Math.min(stages.length - 1, i + 1),
-              )
-            }
-            title="Next stage"
+            onClick={() => setEditorTab("tokens")}
+            className={`min-w-0 flex-1 rounded-md px-3 py-2 text-center text-sm font-medium transition ${
+              editorTab === "tokens"
+                ? "bg-violet-600 text-white shadow-md shadow-violet-900/30"
+                : "text-violet-300/80 hover:bg-violet-950/50 hover:text-violet-100"
+            }`}
           >
-            <ChevronRight className="h-4 w-4" />
+            Tokens
           </button>
         </div>
-      </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div>
-          <label className="label" htmlFor={`st-title-${activeStage.id}`}>
-            Stage title
-          </label>
-          <input
-            id={`st-title-${activeStage.id}`}
-            value={activeStage.title}
-            onChange={(e) =>
-              patchStage(activeStageIndex, { title: e.target.value })
-            }
-            className="input-field mt-1"
-            placeholder="e.g. Default take"
-          />
-        </div>
-        <div>
-          <label className="label" htmlFor={`st-tr-${activeStage.id}`}>
-            Transition to next stage
-          </label>
-          <select
-            id={`st-tr-${activeStage.id}`}
-            value={activeStage.transition}
-            onChange={(e) =>
-              patchStage(activeStageIndex, {
-                transition: e.target.value as StratStageTransition,
-              })
-            }
-            className="input-field mt-1"
-          >
-            {TRANSITION_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="sm:col-span-2">
-          <label className="label" htmlFor={`st-ms-${activeStage.id}`}>
-            Transition duration (ms)
-          </label>
-          <input
-            id={`st-ms-${activeStage.id}`}
-            type="number"
-            min={0}
-            max={4000}
-            step={50}
-            value={activeStage.transitionMs}
-            onChange={(e) =>
-              patchStage(activeStageIndex, {
-                transitionMs: Math.min(
-                  4000,
-                  Math.max(0, Number(e.target.value) || 0),
-                ),
-              })
-            }
-            className="input-field mt-1 max-w-[220px]"
-          />
-        </div>
-        <div className="sm:col-span-2">
-          <label className="label" htmlFor={`st-notes-${activeStage.id}`}>
-            Stage notes
-          </label>
-          <textarea
-            id={`st-notes-${activeStage.id}`}
-            value={activeStage.notes}
-            onChange={(e) =>
-              patchStage(activeStageIndex, { notes: e.target.value })
-            }
-            className="input-field mt-1 min-h-[72px]"
-            placeholder="Coach notes for this beat…"
-          />
-        </div>
-      </div>
-
-      <div className="rounded-lg border border-violet-800/35 bg-slate-950/40 p-3">
-        <p className="text-xs text-violet-300/70">
-          {placementMode ? (
-            <>
-              <span className="text-violet-200">Placement mode:</span> click the
-              map to drop{" "}
-              {placementMode.kind === "agent" ? (
-                <>an agent token ({placementMode.slug})</>
-              ) : (
-                <>
-                  {placementMode.slot.toUpperCase()} for {placementMode.slug}
-                </>
-              )}
-              .{" "}
-              <button
-                type="button"
-                className="text-violet-300 underline"
-                onClick={() => setPlacementMode(null)}
-              >
-                Cancel
-              </button>
-            </>
-          ) : (
-            <>
-              Choose <strong className="text-slate-200">Place agent</strong> or an
-              ability button, then click the map. Drag tokens to adjust. Select a
-              token and press Delete to remove.
-            </>
-          )}
-        </p>
-        {roster.length === 0 ? (
-          <p className="mt-2 text-xs text-amber-200/80">
-            Fill all five agents in the comp above to place icons and abilities.
-          </p>
-        ) : (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {roster.map((r) => (
-              <div key={r.slug} className="flex flex-wrap items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setPlacementMode((m) =>
-                      m?.kind === "agent" && m.slug === r.slug
-                        ? null
-                        : { kind: "agent", slug: r.slug },
-                    )
-                  }
-                  className={`rounded-md border px-2 py-1 text-xs font-medium ${
-                    placementMode?.kind === "agent" &&
-                    placementMode.slug === r.slug
-                      ? "border-violet-400 bg-violet-950/60 text-white"
-                      : "border-violet-800/45 bg-slate-950/60 text-violet-200"
-                  }`}
-                >
-                  {r.name}
-                </button>
-                {(["q", "e", "c", "x"] as const).map((slot) => (
+        <div className="mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain pr-0.5 [scrollbar-gutter:stable]">
+          {editorTab === "stage" ? (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-end gap-3">
+                <div className="min-w-0 flex-1">
+                  <span className="label">Stages</span>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    {stages.map((st, idx) => (
+                      <div key={st.id} className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setActiveStageIndex(idx)}
+                          className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
+                            idx === activeStageIndex
+                              ? "border-violet-500/70 bg-violet-950/50 text-white"
+                              : "border-violet-800/40 bg-slate-950/50 text-violet-200/80 hover:border-violet-600/50"
+                          }`}
+                        >
+                          {st.title || `Stage ${idx + 1}`}
+                        </button>
+                        {stages.length > 1 ? (
+                          <button
+                            type="button"
+                            title="Remove stage"
+                            onClick={() => removeStage(idx)}
+                            className="rounded p-1 text-violet-400/60 hover:bg-fuchsia-950/40 hover:text-fuchsia-200"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        ) : null}
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={addStage}
+                      className="btn-secondary inline-flex items-center gap-1 py-1.5 text-xs"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Stage
+                    </button>
+                  </div>
+                </div>
+                <div className="flex gap-1">
                   <button
-                    key={slot}
                     type="button"
-                    title={`Place ${slot.toUpperCase()} for ${r.name}`}
+                    className="btn-secondary p-2"
+                    disabled={activeStageIndex <= 0}
                     onClick={() =>
-                      setPlacementMode((m) =>
-                        m?.kind === "ability" &&
-                        m.slug === r.slug &&
-                        m.slot === slot
-                          ? null
-                          : { kind: "ability", slug: r.slug, slot },
+                      setActiveStageIndex((i) => Math.max(0, i - 1))
+                    }
+                    title="Previous stage"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-secondary p-2"
+                    disabled={activeStageIndex >= stages.length - 1}
+                    onClick={() =>
+                      setActiveStageIndex((i) =>
+                        Math.min(stages.length - 1, i + 1),
                       )
                     }
-                    className={`h-7 w-7 rounded border text-[11px] font-bold ${
-                      placementMode?.kind === "ability" &&
-                      placementMode.slug === r.slug &&
-                      placementMode.slot === slot
-                        ? "border-cyan-400 bg-cyan-950/50 text-white"
-                        : "border-violet-800/50 bg-slate-950/70 text-violet-200"
-                    }`}
+                    title="Next stage"
                   >
-                    {slot.toUpperCase()}
+                    <ChevronRight className="h-4 w-4" />
                   </button>
-                ))}
+                </div>
               </div>
-            ))}
-          </div>
-        )}
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <label className="label" htmlFor={`st-title-${activeStage.id}`}>
+                    Stage title
+                  </label>
+                  <input
+                    id={`st-title-${activeStage.id}`}
+                    value={activeStage.title}
+                    onChange={(e) =>
+                      patchStage(activeStageIndex, { title: e.target.value })
+                    }
+                    className="input-field mt-1"
+                    placeholder="e.g. Default take"
+                  />
+                </div>
+                <div>
+                  <label className="label" htmlFor={`st-tr-${activeStage.id}`}>
+                    Transition to next stage
+                  </label>
+                  <select
+                    id={`st-tr-${activeStage.id}`}
+                    value={activeStage.transition}
+                    onChange={(e) =>
+                      patchStage(activeStageIndex, {
+                        transition: e.target.value as StratStageTransition,
+                      })
+                    }
+                    className="input-field mt-1"
+                  >
+                    {TRANSITION_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label" htmlFor={`st-ms-${activeStage.id}`}>
+                    Transition duration (ms)
+                  </label>
+                  <input
+                    id={`st-ms-${activeStage.id}`}
+                    type="number"
+                    min={0}
+                    max={4000}
+                    step={50}
+                    value={activeStage.transitionMs}
+                    onChange={(e) =>
+                      patchStage(activeStageIndex, {
+                        transitionMs: Math.min(
+                          4000,
+                          Math.max(0, Number(e.target.value) || 0),
+                        ),
+                      })
+                    }
+                    className="input-field mt-1"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="label" htmlFor={`st-notes-${activeStage.id}`}>
+                    Stage notes
+                  </label>
+                  <textarea
+                    id={`st-notes-${activeStage.id}`}
+                    value={activeStage.notes}
+                    onChange={(e) =>
+                      patchStage(activeStageIndex, { notes: e.target.value })
+                    }
+                    className="input-field mt-1 min-h-[120px]"
+                    placeholder="Coach notes for this beat…"
+                  />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-violet-800/35 bg-slate-950/40 p-3">
+              <p className="text-xs text-violet-300/70">
+                {placementMode ? (
+                  <>
+                    <span className="text-violet-200">Placement mode:</span> click
+                    the map to drop{" "}
+                    {placementMode.kind === "agent" ? (
+                      <>an agent token ({placementMode.slug})</>
+                    ) : (
+                      <>
+                        {placementMode.slot.toUpperCase()} for{" "}
+                        {placementMode.slug}
+                      </>
+                    )}
+                    .{" "}
+                    <button
+                      type="button"
+                      className="text-violet-300 underline"
+                      onClick={() => setPlacementMode(null)}
+                    >
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    Choose <strong className="text-slate-200">agent name</strong>{" "}
+                    or a <strong className="text-slate-200">Q/E/C/X</strong> chip,
+                    then click the map. Drag pins to adjust; select a pin and press
+                    Delete to remove.
+                  </>
+                )}
+              </p>
+              {roster.length === 0 ? (
+                <p className="mt-2 text-xs text-amber-200/80">
+                  Fill the five agents in the comp on the left to enable tokens.
+                </p>
+              ) : (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {roster.map((r) => (
+                    <div key={r.slug} className="flex flex-wrap items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPlacementMode((m) =>
+                            m?.kind === "agent" && m.slug === r.slug
+                              ? null
+                              : { kind: "agent", slug: r.slug },
+                          )
+                        }
+                        className={`rounded-md border px-2 py-1 text-xs font-medium ${
+                          placementMode?.kind === "agent" &&
+                          placementMode.slug === r.slug
+                            ? "border-violet-400 bg-violet-950/60 text-white"
+                            : "border-violet-800/45 bg-slate-950/60 text-violet-200"
+                        }`}
+                      >
+                        {r.name}
+                      </button>
+                      {(["q", "e", "c", "x"] as const).map((slot) => (
+                        <button
+                          key={slot}
+                          type="button"
+                          title={`Place ${slot.toUpperCase()} for ${r.name}`}
+                          onClick={() =>
+                            setPlacementMode((m) =>
+                              m?.kind === "ability" &&
+                              m.slug === r.slug &&
+                              m.slot === slot
+                                ? null
+                                : { kind: "ability", slug: r.slug, slot },
+                            )
+                          }
+                          className={`h-7 w-7 rounded border text-[11px] font-bold ${
+                            placementMode?.kind === "ability" &&
+                            placementMode.slug === r.slug &&
+                            placementMode.slot === slot
+                              ? "border-cyan-400 bg-cyan-950/50 text-white"
+                              : "border-violet-800/50 bg-slate-950/70 text-violet-200"
+                          }`}
+                        >
+                          {slot.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       <div
+        className="flex min-h-0 min-w-0 flex-1 flex-col"
         style={{
           animation: mapAnim
             ? `${mapAnim.name} ${mapAnim.ms}ms ease both`
@@ -656,6 +694,8 @@ export function StratStageEditor({
           gameMap={gameMap}
           side={side}
           showLayerToggles={false}
+          showFooter={false}
+          embed
         >
           {overlay}
         </StratMapViewer>
