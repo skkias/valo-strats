@@ -7,15 +7,30 @@ export function AbilityTextureDefs({
   patternId,
   textureId,
   color,
+  originX,
+  originY,
+  radialFromOrigin = false,
 }: {
   patternId: string;
   textureId?: AbilityTextureId;
   color: string;
+  originX?: number;
+  originY?: number;
+  radialFromOrigin?: boolean;
 }) {
   if (!textureId || textureId === "solid") return null;
   const stroke = rgbaWithAlpha(color, 0.6);
   const base = rgbaWithAlpha(color, 0.18);
   const strong = rgbaWithAlpha(color, 0.78);
+
+  const tx =
+    radialFromOrigin && Number.isFinite(originX)
+      ? (originX as number) - 12
+      : 0;
+  const ty =
+    radialFromOrigin && Number.isFinite(originY)
+      ? (originY as number) - 12
+      : 0;
 
   return (
     <defs>
@@ -24,6 +39,9 @@ export function AbilityTextureDefs({
         patternUnits="userSpaceOnUse"
         width="24"
         height="24"
+        patternTransform={
+          radialFromOrigin ? `translate(${tx} ${ty})` : undefined
+        }
       >
         <rect width="24" height="24" fill={base} />
         {textureId === "diag_fwd" ? <path d="M-6 24 L24 -6 M0 30 L30 0" stroke={stroke} strokeWidth="2" /> : null}

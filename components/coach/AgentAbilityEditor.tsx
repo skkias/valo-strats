@@ -76,6 +76,16 @@ const SHAPE_OPTIONS: { value: AgentAbilityShapeKind; label: string; hint: string
     { value: "circle", label: "Circle", hint: "Smoke, orb radius" },
     { value: "ray", label: "Ray / line", hint: "Tripwire, laser" },
     { value: "cone", label: "Cone / wedge", hint: "Flash, vision cone" },
+    {
+      value: "vision_cone_narrow",
+      label: "Vision cone (narrow)",
+      hint: "LOS cone, tight angle",
+    },
+    {
+      value: "vision_cone_wide",
+      label: "Vision cone (wide)",
+      hint: "LOS cone, broad angle",
+    },
     { value: "polyline", label: "Polyline", hint: "Dart path, wall chain" },
     { value: "polygon", label: "Polygon zone", hint: "Trap field, floor" },
     { value: "rectangle", label: "Rectangle", hint: "Aligned box" },
@@ -142,6 +152,36 @@ function buildGeometry(
       ly: l.y,
       rx: r.x,
       ry: r.y,
+    };
+  }
+  if (
+    (kind === "vision_cone_narrow" || kind === "vision_cone_wide") &&
+    pts.length >= 2
+  ) {
+    const o = pts[0]!;
+    const aim = pts[1]!;
+    const dx = aim.x - o.x;
+    const dy = aim.y - o.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-6) return null;
+    const ux = dx / len;
+    const uy = dy / len;
+    const halfDeg = kind === "vision_cone_wide" ? 55 : 30;
+    const ang = (halfDeg * Math.PI) / 180;
+    const ca = Math.cos(ang);
+    const sa = Math.sin(ang);
+    const ldx = (ux * ca - uy * sa) * len;
+    const ldy = (ux * sa + uy * ca) * len;
+    const rdx = (ux * ca + uy * sa) * len;
+    const rdy = (-ux * sa + uy * ca) * len;
+    return {
+      kind: "cone",
+      ox: o.x,
+      oy: o.y,
+      lx: o.x + ldx,
+      ly: o.y + ldy,
+      rx: o.x + rdx,
+      ry: o.y + rdy,
     };
   }
   if (kind === "polyline" && pts.length >= 2) {
@@ -278,6 +318,7 @@ function AbilityShapePreview({
   const stroke = b.color;
   const fill = rgbaWithAlpha(b.color, 0.2);
   const texturePatternId = `abtx-editor-${b.id}`;
+  const textureAnchor = blueprintStratAnchor(b);
   const textureFill =
     b.textureId && b.textureId !== "solid"
       ? `url(#${texturePatternId})`
@@ -306,6 +347,9 @@ function AbilityShapePreview({
             patternId={texturePatternId}
             textureId={b.textureId}
             color={b.color}
+            originX={textureAnchor.x}
+            originY={textureAnchor.y}
+            radialFromOrigin={b.textureRadialFromOrigin === true}
           />
           <circle
             cx={g.cx}
@@ -338,6 +382,9 @@ function AbilityShapePreview({
             patternId={texturePatternId}
             textureId={b.textureId}
             color={b.color}
+            originX={textureAnchor.x}
+            originY={textureAnchor.y}
+            radialFromOrigin={b.textureRadialFromOrigin === true}
           />
           <polygon
             points={`${g.ox},${g.oy} ${g.lx},${g.ly} ${g.rx},${g.ry}`}
@@ -370,6 +417,9 @@ function AbilityShapePreview({
             patternId={texturePatternId}
             textureId={b.textureId}
             color={b.color}
+            originX={textureAnchor.x}
+            originY={textureAnchor.y}
+            radialFromOrigin={b.textureRadialFromOrigin === true}
           />
           <polygon
             points={g.points.map((p) => `${p.x},${p.y}`).join(" ")}
@@ -387,6 +437,9 @@ function AbilityShapePreview({
             patternId={texturePatternId}
             textureId={b.textureId}
             color={b.color}
+            originX={textureAnchor.x}
+            originY={textureAnchor.y}
+            radialFromOrigin={b.textureRadialFromOrigin === true}
           />
           <rect
             x={g.x}
@@ -424,6 +477,9 @@ function AbilityShapePreview({
             patternId={texturePatternId}
             textureId={b.textureId}
             color={b.color}
+            originX={textureAnchor.x}
+            originY={textureAnchor.y}
+            radialFromOrigin={b.textureRadialFromOrigin === true}
           />
           <line
             x1={m.ax}
@@ -458,6 +514,7 @@ type Placement = {
   shapeKind: AgentAbilityShapeKind;
   color: string;
   textureId?: AbilityTextureId;
+  textureRadialFromOrigin?: boolean;
   points: MapPoint[];
 };
 
@@ -471,6 +528,10 @@ function placementHint(kind: AgentAbilityShapeKind): string {
       return "Click start, then end of the segment.";
     case "cone":
       return "Click apex, left edge, right edge (triangle).";
+    case "vision_cone_narrow":
+      return "Click origin, then look direction (narrow LOS cone).";
+    case "vision_cone_wide":
+      return "Click origin, then look direction (wide LOS cone).";
     case "polyline":
       return "Click to add vertices. Press Done when finished (≥2 points).";
     case "polygon":
@@ -498,6 +559,9 @@ function pointsDoneCount(kind: AgentAbilityShapeKind): number {
     case "cone":
     case "arc":
       return 3;
+    case "vision_cone_narrow":
+    case "vision_cone_wide":
+      return 2;
     default:
       return 999;
   }
@@ -522,6 +586,8 @@ function placementProgressLine(
     circle: ["1/2 — smoke center", "2/2 — edge for radius", ""],
     ray: ["1/2 — line start", "2/2 — line end", ""],
     cone: ["1/3 — apex", "2/3 — left edge", "3/3 — right edge"],
+    vision_cone_narrow: ["1/2 — vision origin", "2/2 — look direction", ""],
+    vision_cone_wide: ["1/2 — vision origin", "2/2 — look direction", ""],
     polyline: ["", "", ""],
     polygon: ["", "", ""],
     rectangle: ["1/2 — one corner", "2/2 — opposite corner", ""],
@@ -580,6 +646,8 @@ export function AgentAbilityEditor({
   const [draftShape, setDraftShape] = useState<AgentAbilityShapeKind>("circle");
   const [draftColor, setDraftColor] = useState("#a78bfa");
   const [draftTexture, setDraftTexture] = useState<AbilityTextureId>("diag_fwd");
+  const [draftTextureRadialFromOrigin, setDraftTextureRadialFromOrigin] =
+    useState(false);
   const [previewMapId, setPreviewMapId] = useState<string | null>(
     maps[0]?.id ?? null,
   );
@@ -630,10 +698,18 @@ export function AgentAbilityEditor({
       shapeKind: draftShape,
       color: draftColor,
       textureId: draftTexture,
+      textureRadialFromOrigin: draftTextureRadialFromOrigin,
       points: [],
     });
     setBanner(null);
-  }, [draftSlot, draftName, draftShape, draftColor, draftTexture]);
+  }, [
+    draftSlot,
+    draftName,
+    draftShape,
+    draftColor,
+    draftTexture,
+    draftTextureRadialFromOrigin,
+  ]);
 
   const cancelPlacement = useCallback(() => {
     setPlacement(null);
@@ -686,9 +762,14 @@ export function AgentAbilityEditor({
         shapeKind: placement.shapeKind,
         color: placement.color,
         textureId: placement.textureId,
+        textureRadialFromOrigin:
+          placement.textureRadialFromOrigin === true ? true : undefined,
         geometry: geo,
         stratPlacementMode: defaultStratPlacementForShape(placement.shapeKind),
       };
+      if (geo.kind === "cone") {
+        next.origin = { x: geo.ox, y: geo.oy };
+      }
       setAbilities((a) => [...a, next]);
       setSelectedId(next.id);
       setPlacement(null);
@@ -750,6 +831,7 @@ export function AgentAbilityEditor({
           | "pointIconShow"
           | "pointIconScale"
           | "textureId"
+          | "textureRadialFromOrigin"
         >
       >,
     ) => {
@@ -785,6 +867,13 @@ export function AgentAbilityEditor({
               delete n.textureId;
             } else {
               n.textureId = patch.textureId;
+            }
+          }
+          if ("textureRadialFromOrigin" in patch) {
+            if (patch.textureRadialFromOrigin === true) {
+              n.textureRadialFromOrigin = true;
+            } else {
+              delete n.textureRadialFromOrigin;
             }
           }
           return n;
@@ -1285,6 +1374,18 @@ export function AgentAbilityEditor({
                 </option>
               ))}
             </select>
+            <label className="mt-1.5 flex cursor-pointer items-center gap-2 text-xs text-violet-200/85">
+              <input
+                type="checkbox"
+                checked={draftTextureRadialFromOrigin}
+                onChange={(e) =>
+                  setDraftTextureRadialFromOrigin(e.target.checked)
+                }
+                className="rounded border-violet-600/60"
+                disabled={!!placement}
+              />
+              Radialize texture from origin
+            </label>
           </div>
           <button
             type="button"
@@ -1528,6 +1629,24 @@ export function AgentAbilityEditor({
                         ))}
                       </select>
                     </label>
+                    <label className="flex cursor-pointer items-center gap-2 text-[11px] text-violet-200/90">
+                      <input
+                        type="checkbox"
+                        checked={selected.textureRadialFromOrigin === true}
+                        onChange={(e) =>
+                          updateSelectedBlueprintMeta({
+                            textureRadialFromOrigin: e.target.checked,
+                          })
+                        }
+                        className="rounded border-violet-600/60"
+                      />
+                      Radialize texture from origin
+                    </label>
+                    <p className="text-[10px] leading-snug text-violet-400/75">
+                      Centers texture phase on the blueprint origin. Radial/rings
+                      textures will emit from that point (half-rings if origin is on
+                      an edge).
+                    </p>
                   </div>
                 ) : null}
                 <BlueprintGeometryFields

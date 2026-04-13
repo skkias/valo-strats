@@ -15,6 +15,8 @@ const SHAPE_KINDS: AgentAbilityShapeKind[] = [
   "circle",
   "ray",
   "cone",
+  "vision_cone_narrow",
+  "vision_cone_wide",
   "polyline",
   "polygon",
   "rectangle",
@@ -107,7 +109,12 @@ function normalizeGeometry(
       y2: clamp(Number(o.y2)),
     };
   }
-  if (k === "cone" && shapeKind === "cone") {
+  if (
+    k === "cone" &&
+    (shapeKind === "cone" ||
+      shapeKind === "vision_cone_narrow" ||
+      shapeKind === "vision_cone_wide")
+  ) {
     return {
       kind: "cone",
       ox: clamp(Number(o.ox)),
@@ -171,6 +178,10 @@ function defaultGeometry(kind: AgentAbilityShapeKind): AgentAbilityGeometry {
       return { kind: "ray", x1: 400, y1: 500, x2: 600, y2: 500 };
     case "cone":
       return { kind: "cone", ox: 500, oy: 600, lx: 400, ly: 400, rx: 600, ry: 400 };
+    case "vision_cone_narrow":
+      return { kind: "cone", ox: 500, oy: 620, lx: 450, ly: 420, rx: 550, ry: 420 };
+    case "vision_cone_wide":
+      return { kind: "cone", ox: 500, oy: 620, lx: 320, ly: 420, rx: 680, ry: 420 };
     case "polyline":
       return {
         kind: "polyline",
@@ -235,6 +246,11 @@ function normalizePointIconShow(raw: unknown): boolean | undefined {
   return undefined;
 }
 
+function normalizeTextureRadialFromOrigin(raw: unknown): boolean | undefined {
+  if (raw === true) return true;
+  return undefined;
+}
+
 function normalizePointIconScale(raw: unknown): number | undefined {
   const n = Number(raw);
   if (!Number.isFinite(n)) return undefined;
@@ -265,6 +281,9 @@ export function normalizeAgentAbilityBlueprint(raw: unknown): AgentAbilityBluepr
     o.pointIconScale ?? o.point_icon_scale,
   );
   const textureId = normalizeAbilityTextureId(o.textureId ?? o.texture_id);
+  const textureRadialFromOrigin = normalizeTextureRadialFromOrigin(
+    o.textureRadialFromOrigin ?? o.texture_radial_from_origin,
+  );
   const base: AgentAbilityBlueprint = {
     id,
     slot,
@@ -274,10 +293,16 @@ export function normalizeAgentAbilityBlueprint(raw: unknown): AgentAbilityBluepr
     geometry,
   };
   if (origin) base.origin = origin;
+  else if (geometry.kind === "cone") {
+    base.origin = { x: geometry.ox, y: geometry.oy };
+  }
   if (stratPlacementMode) base.stratPlacementMode = stratPlacementMode;
   if (pointIconShow === false) base.pointIconShow = false;
   if (pointIconScale !== undefined) base.pointIconScale = pointIconScale;
   if (textureId) base.textureId = textureId;
+  if (textureRadialFromOrigin === true) {
+    base.textureRadialFromOrigin = true;
+  }
   return base;
 }
 

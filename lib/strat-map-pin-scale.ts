@@ -2,7 +2,7 @@
 export const COACH_MAP_PIN_SCALE_STORAGE_KEY = "valo-strats:coachMapPinScale";
 
 /** Base radius as a fraction of map viewBox width (100% pin scale baseline). */
-export const STRAT_AGENT_TOKEN_VB_FRAC = 0.010;
+export const STRAT_AGENT_TOKEN_VB_FRAC = 0.007;
 
 /** Agent label font size vs viewBox width. */
 export const STRAT_AGENT_LABEL_VB_FRAC = 0.013;

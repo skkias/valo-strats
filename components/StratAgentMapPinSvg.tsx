@@ -32,7 +32,7 @@ export function StratAgentMapPinSvg({
   const hasPortrait =
     typeof portraitUrl === "string" &&
     portraitUrl.trim().startsWith("https://");
-  const strokeW = vbWidth * 0.0028 * (selected ? 2.2 : 1);
+  const strokeW = vbWidth * 0.00135 * (selected ? 1.55 : 1);
 
   const textStyle: CSSProperties = {
     fontSize: fontAgent,

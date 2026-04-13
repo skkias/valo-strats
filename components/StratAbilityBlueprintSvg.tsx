@@ -9,6 +9,11 @@ import {
   BLUEPRINT_CANVAS_SIZE,
   stratBlueprintUnitsToMapScale,
 } from "@/lib/agent-ability-blueprint-scale";
+import { blueprintPointToStratMapDisplay } from "@/lib/strat-blueprint-map-point";
+import {
+  computeVisionConeLosPolygon,
+  type VisionLosContext,
+} from "@/lib/vision-cone-los";
 
 const BP = BLUEPRINT_CANVAS_SIZE;
 
@@ -131,6 +136,7 @@ export function StratAbilityBlueprintSvg({
    */
   stratAnchorOverride,
   mapPinScale = 1,
+  visionLosContext,
 }: {
   blueprint: AgentAbilityBlueprint;
   mapX: number;
@@ -144,11 +150,14 @@ export function StratAbilityBlueprintSvg({
   stratAnchorOverride?: { x: number; y: number } | null;
   /** Coach preference: scales blueprint on the strat map (default 1). */
   mapPinScale?: number;
+  /** Optional map geometry for LOS clipping on vision cones. */
+  visionLosContext?: VisionLosContext | null;
 }) {
   const g = blueprint.geometry;
   const stroke = blueprint.color;
   const fill = rgbaWithAlpha(blueprint.color, 0.27);
   const texturePatternId = `abtx-map-${blueprint.id}`;
+  const textureAnchor = blueprintStratAnchor(blueprint);
   const textureFill =
     blueprint.textureId && blueprint.textureId !== "solid"
       ? `url(#${texturePatternId})`
@@ -163,6 +172,8 @@ export function StratAbilityBlueprintSvg({
     MAP_BLUEPRINT_STROKE_SCALE;
   const op = selected ? 1 : 0.92;
   const transform = `translate(${mapX},${mapY}) rotate(${rotationDeg}) scale(${scale}) translate(${-anchor.x},${-anchor.y})`;
+  const mappedVbWidth =
+    vbWidth * (Number.isFinite(mapPinScale) ? mapPinScale : 1);
 
   const commonStroke = {
     vectorEffect: "non-scaling-stroke" as const,
@@ -227,6 +238,57 @@ export function StratAbilityBlueprintSvg({
       );
       break;
     case "cone":
+      if (
+        (blueprint.shapeKind === "vision_cone_narrow" ||
+          blueprint.shapeKind === "vision_cone_wide") &&
+        visionLosContext
+      ) {
+        const o = blueprintPointToStratMapDisplay(
+          { x: g.ox, y: g.oy },
+          blueprint,
+          mapX,
+          mapY,
+          mappedVbWidth,
+          rotationDeg,
+          stratAnchorOverride,
+        );
+        const l = blueprintPointToStratMapDisplay(
+          { x: g.lx, y: g.ly },
+          blueprint,
+          mapX,
+          mapY,
+          mappedVbWidth,
+          rotationDeg,
+          stratAnchorOverride,
+        );
+        const r = blueprintPointToStratMapDisplay(
+          { x: g.rx, y: g.ry },
+          blueprint,
+          mapX,
+          mapY,
+          mappedVbWidth,
+          rotationDeg,
+          stratAnchorOverride,
+        );
+        const losPts = computeVisionConeLosPolygon({
+          origin: o,
+          left: l,
+          right: r,
+          context: visionLosContext,
+        });
+        inner = (
+          <g opacity={op} style={{ pointerEvents }}>
+            <polygon
+              points={losPts.map((p) => `${p.x},${p.y}`).join(" ")}
+              fill={fill}
+              stroke={stroke}
+              strokeLinejoin="round"
+              {...commonStroke}
+            />
+          </g>
+        );
+        break;
+      }
       inner = (
         <g opacity={op} style={{ pointerEvents }}>
           <polygon
@@ -347,12 +409,24 @@ export function StratAbilityBlueprintSvg({
 
   if (!inner) return null;
 
+  if (
+    g.kind === "cone" &&
+    (blueprint.shapeKind === "vision_cone_narrow" ||
+      blueprint.shapeKind === "vision_cone_wide") &&
+    visionLosContext
+  ) {
+    return inner;
+  }
+
   return (
     <g transform={transform}>
       <AbilityTextureDefs
         patternId={texturePatternId}
         textureId={blueprint.textureId}
         color={blueprint.color}
+        originX={textureAnchor.x}
+        originY={textureAnchor.y}
+        radialFromOrigin={blueprint.textureRadialFromOrigin === true}
       />
       {inner}
     </g>

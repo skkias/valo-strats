@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { Agent } from "@/types/catalog";
+import type { Agent, GameMap } from "@/types/catalog";
 import type { StratSide, StratStage } from "@/types/strat";
 import type { ViewBoxRect } from "@/lib/map-path";
 import { stratStagePinForDisplay } from "@/lib/strat-stage-coords";
@@ -20,22 +20,15 @@ import {
   fetchValorantAbilityUiBySlug,
   type ValorantAbilityUiMeta,
 } from "@/lib/valorant-api-abilities";
-import { effectiveStratPlacementMode } from "@/lib/strat-blueprint-anchor";
-import {
-  stratAbilityRotationHandleDistance,
-  stratAbilityRotationHandleStored,
-} from "@/lib/strat-ability-rotation-handle";
-import {
-  blueprintPointToStratMapDisplay,
-  rectangleStratPivotBlueprint,
-  stratAnchorOverrideForBlueprint,
-} from "@/lib/strat-blueprint-map-point";
+import { stratAnchorOverrideForBlueprint } from "@/lib/strat-blueprint-map-point";
 import {
   clampCoachMapPinScale,
   stratAbilityPinDimensions,
 } from "@/lib/strat-map-pin-scale";
+import { buildVisionLosContext } from "@/lib/vision-cone-los";
 
 export function StratStagePinsReadonly({
+  gameMap,
   vb,
   vbWidth,
   side,
@@ -45,6 +38,7 @@ export function StratStagePinsReadonly({
   agentTransition,
   pinScale = 1,
 }: {
+  gameMap: GameMap;
   vb: ViewBoxRect;
   vbWidth: number;
   side: StratSide;
@@ -106,39 +100,18 @@ export function StratStagePinsReadonly({
     };
   }, []);
 
+  const visionLosContext = useMemo(
+    () => buildVisionLosContext(gameMap, side),
+    [gameMap, side],
+  );
+
   return (
     <g style={{ pointerEvents: "none" }}>
       {stage.abilities.map((ab) => {
         const st = abilitySlotStyle(ab.slot);
         const pos = stratStagePinForDisplay(vb, side, { x: ab.x, y: ab.y });
         const bp = agentBlueprintForSlot(agentsCatalog, ab.agentSlug, ab.slot);
-        const useTwoHandles =
-          bp != null && effectiveStratPlacementMode(bp) === "origin_direction";
         const stratOv = bp ? stratAnchorOverrideForBlueprint(bp) : undefined;
-        const isRectOD =
-          useTwoHandles &&
-          bp != null &&
-          bp.shapeKind === "rectangle" &&
-          bp.geometry.kind === "rectangle";
-        const rotDist = stratAbilityRotationHandleDistance(vbWidth) * pinS;
-        const rotStored = stratAbilityRotationHandleStored(
-          { x: ab.x, y: ab.y },
-          ab.rotationDeg ?? 0,
-          rotDist,
-        );
-        const rotPos = stratStagePinForDisplay(vb, side, rotStored);
-        const rectCenterPos =
-          isRectOD && bp && bp.geometry.kind === "rectangle"
-            ? blueprintPointToStratMapDisplay(
-                rectangleStratPivotBlueprint(bp.geometry),
-                bp,
-                pos.x,
-                pos.y,
-                vbWidth,
-                ab.rotationDeg ?? 0,
-                stratOv,
-              )
-            : null;
 
         return (
           <g key={ab.id}>
@@ -161,6 +134,7 @@ export function StratStagePinsReadonly({
                       )?.displayIcon ?? null
                     : null
                 }
+                visionLosContext={visionLosContext}
               />
             ) : (
               <g transform={`translate(${pos.x},${pos.y})`}>
@@ -184,35 +158,6 @@ export function StratStagePinsReadonly({
                 </text>
               </g>
             )}
-            {useTwoHandles ? (
-              <g pointerEvents="none">
-                <line
-                  x1={pos.x}
-                  y1={pos.y}
-                  x2={isRectOD && rectCenterPos ? rectCenterPos.x : rotPos.x}
-                  y2={isRectOD && rectCenterPos ? rectCenterPos.y : rotPos.y}
-                  stroke="rgba(34, 211, 238, 0.55)"
-                  strokeWidth={Math.max(vbWidth * 0.0016, 0.75) * pinS}
-                  strokeDasharray="5 4"
-                />
-                <circle
-                  cx={pos.x}
-                  cy={pos.y}
-                  r={Math.max(vbWidth * 0.007, 3.5) * pinS}
-                  fill="rgb(250, 204, 21)"
-                  stroke="rgb(15, 23, 42)"
-                  strokeWidth={Math.max(vbWidth * 0.0018, 0.8) * pinS}
-                />
-                <circle
-                  cx={isRectOD && rectCenterPos ? rectCenterPos.x : rotPos.x}
-                  cy={isRectOD && rectCenterPos ? rectCenterPos.y : rotPos.y}
-                  r={Math.max(vbWidth * 0.0065, 3) * pinS}
-                  fill="rgb(34, 211, 238)"
-                  stroke="rgb(15, 23, 42)"
-                  strokeWidth={Math.max(vbWidth * 0.0016, 0.75) * pinS}
-                />
-              </g>
-            ) : null}
           </g>
         );
       })}

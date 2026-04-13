@@ -47,6 +47,7 @@ function parseKind(raw: unknown): MapOverlayKind | null {
     k === "breakable_doorway" ||
     k === "toggle_door" ||
     k === "rope" ||
+    k === "spawn_barrier" ||
     k === "plant_site"
   ) {
     return k;

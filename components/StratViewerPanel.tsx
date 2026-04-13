@@ -61,8 +61,11 @@ export function StratViewerPanel({
       showLayerToggles
       showFooter={showFooter}
       embed={embed}
+      initialVisibility={stage.mapLayerVisibility}
+      visibilityScopeKey={stage.id}
     >
       <StratStagePinsReadonly
+        gameMap={gameMap}
         vb={vb}
         vbWidth={vbWidth}
         side={side}

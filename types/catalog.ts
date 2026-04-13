@@ -49,6 +49,8 @@ export type MapOverlayKind =
    * (kept in sync with first/last vertex when saving).
    */
   | "rope"
+  /** Open polyline for round-start spawn barriers. */
+  | "spawn_barrier"
   /** Closed polygon: bomb plant zone / plantable site outline. */
   | "plant_site";
 

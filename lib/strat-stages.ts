@@ -1,9 +1,14 @@
 import type {
   StratPlacedAbility,
   StratPlacedAgent,
+  StratStageLayerVisibility,
   StratStage,
   StratStageTransition,
 } from "@/types/strat";
+import {
+  DEFAULT_STRAT_STAGE_LAYER_VISIBILITY,
+  normalizeStratStageLayerVisibility,
+} from "@/lib/strat-stage-layer-visibility";
 
 const TRANSITIONS: StratStageTransition[] = [
   "none",
@@ -28,6 +33,7 @@ export function createEmptyStratStage(index: number): StratStage {
     notes: "",
     agents: [],
     abilities: [],
+    mapLayerVisibility: { ...DEFAULT_STRAT_STAGE_LAYER_VISIBILITY },
     transition: "fade",
     transitionMs: 450,
   };
@@ -113,6 +119,10 @@ function normalizeStage(raw: unknown, index: number): StratStage {
     .map(normalizeAbility)
     .filter((x): x is StratPlacedAbility => x != null);
   const transition = normalizeTransition(o.transition);
+  const mapLayerVisibility: StratStageLayerVisibility =
+    normalizeStratStageLayerVisibility(
+      o.mapLayerVisibility ?? o.map_layer_visibility,
+    );
   const transitionMsRaw = o.transitionMs ?? o.transition_ms;
   const transitionMs =
     typeof transitionMsRaw === "number" &&
@@ -127,6 +137,7 @@ function normalizeStage(raw: unknown, index: number): StratStage {
     notes,
     agents,
     abilities,
+    mapLayerVisibility,
     transition,
     transitionMs,
   };

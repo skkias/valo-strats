@@ -70,6 +70,7 @@ import {
   rectangleStratPivotBlueprint,
   stratAnchorOverrideForBlueprint,
 } from "@/lib/strat-blueprint-map-point";
+import { buildVisionLosContext } from "@/lib/vision-cone-los";
 
 type PlacementMode =
   | null
@@ -179,6 +180,10 @@ export function StratStageEditor({
     const d = stratMapDisplayData(gameMap, side);
     return { vb: d.vb, vbWidth: d.vb.width };
   }, [gameMap, side]);
+  const visionLosContext = useMemo(
+    () => buildVisionLosContext(gameMap, side),
+    [gameMap, side],
+  );
 
   const mapGeoScale = useMemo(
     () =>
@@ -646,6 +651,7 @@ export function StratStageEditor({
                   )?.displayIcon ?? null
                 : null
             }
+            visionLosContext={visionLosContext}
             pointerEvents="auto"
           />
         ) : (
@@ -1212,9 +1218,14 @@ export function StratStageEditor({
           ref={svgRef}
           gameMap={gameMap}
           side={side}
-          showLayerToggles={false}
+          showLayerToggles
           showFooter={false}
           embed
+          initialVisibility={activeStage.mapLayerVisibility}
+          visibilityScopeKey={activeStage.id}
+          onVisibilityChange={(next) =>
+            patchStage(activeStageIndex, { mapLayerVisibility: next })
+          }
         >
           {overlay}
         </StratMapViewer>

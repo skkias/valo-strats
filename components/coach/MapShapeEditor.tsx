@@ -201,6 +201,9 @@ const SPAWN_DEF_STROKE = "#ffffff";
 const BREAKABLE_DOORWAY_STROKE = "rgb(16, 185, 129)";
 const BREAKABLE_DOORWAY_STROKE_HI = "rgb(167, 243, 208)";
 const BREAKABLE_DOORWAY_VERTEX = "rgb(52, 211, 153)";
+const SPAWN_BARRIER_STROKE = "rgb(244, 114, 182)";
+const SPAWN_BARRIER_STROKE_HI = "rgb(251, 207, 232)";
+const SPAWN_BARRIER_VERTEX = "rgb(249, 168, 212)";
 
 /**
  * Elevation walkable polygons: lower ≈ ground (“hell”), upper ≈ raised (“heaven”).
@@ -262,7 +265,8 @@ function isOpenPolylineOverlayKind(kind: MapOverlayKind): boolean {
     kind === "grade" ||
     kind === "breakable_doorway" ||
     kind === "toggle_door" ||
-    kind === "rope"
+    kind === "rope" ||
+    kind === "spawn_barrier"
   );
 }
 
@@ -293,6 +297,7 @@ const OVERLAY_KIND_ORDER: MapOverlayKind[] = [
   "breakable_doorway",
   "toggle_door",
   "rope",
+  "spawn_barrier",
 ];
 
 function overlayPolygonStyle(
@@ -367,6 +372,8 @@ function overlayPassiveFill(
       return "rgba(99,102,241,0.5)";
     case "rope":
       return "rgba(245, 158, 11, 0.5)";
+    case "spawn_barrier":
+      return "rgba(244, 114, 182, 0.5)";
     default:
       return "rgba(253,224,71,0.45)";
   }
@@ -397,6 +404,8 @@ function overlayPassiveFillHover(
       return "rgba(129,140,248,0.55)";
     case "rope":
       return "rgba(251, 191, 36, 0.55)";
+    case "spawn_barrier":
+      return "rgba(251, 207, 232, 0.55)";
     default:
       return overlayPassiveFill(kind, floor);
   }
@@ -425,6 +434,8 @@ function overlayActiveVertexFill(
       return "rgb(165,180,252)";
     case "rope":
       return "rgb(251, 191, 36)";
+    case "spawn_barrier":
+      return SPAWN_BARRIER_VERTEX;
     default:
       return "rgb(253,224,71)";
   }
@@ -614,6 +625,47 @@ function DoorwayOverlaySvg({
       strokeLinejoin="round"
       pointerEvents="none"
       opacity={open ? 0.9 : 1}
+    />
+  );
+}
+
+function SpawnBarrierOverlaySvg({
+  sh,
+  vbWidth,
+  highlight,
+}: {
+  sh: MapOverlayShape;
+  vbWidth: number;
+  highlight: boolean;
+}) {
+  const pts = sh.points;
+  const sw =
+    vbWidth * 0.0042 * (highlight ? 1.2 : 1) * MAP_VIEW_VECTOR_STROKE_SCALE;
+  if (pts.length === 0) return null;
+  if (pts.length === 1) {
+    const p = pts[0]!;
+    return (
+      <circle
+        cx={p.x}
+        cy={p.y}
+        r={vbWidth * 0.007}
+        fill={highlight ? SPAWN_BARRIER_STROKE_HI : SPAWN_BARRIER_STROKE}
+        pointerEvents="none"
+      />
+    );
+  }
+  const d = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+  return (
+    <path
+      d={d}
+      fill="none"
+      stroke={highlight ? SPAWN_BARRIER_STROKE_HI : SPAWN_BARRIER_STROKE}
+      strokeWidth={sw}
+      strokeDasharray="12 8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      pointerEvents="none"
+      opacity={0.95}
     />
   );
 }
@@ -2666,6 +2718,17 @@ export function MapShapeEditor({
                       </g>
                     );
                   }
+                  if (sh.kind === "spawn_barrier") {
+                    return (
+                      <g key={sh.id} style={{ opacity: op }} pointerEvents="none">
+                        <SpawnBarrierOverlaySvg
+                          sh={sh}
+                          vbWidth={vb.width}
+                          highlight={hl}
+                        />
+                      </g>
+                    );
+                  }
                   if (sh.kind === "grade") {
                     return (
                       <g key={sh.id} style={{ opacity: op }} pointerEvents="none">
@@ -3944,6 +4007,8 @@ export function MapShapeEditor({
                               ? "Grade lines"
                               : kind === "breakable_doorway"
                                 ? "Breakable doorways"
+                                : kind === "spawn_barrier"
+                                  ? "Spawn barriers"
                                 : kind === "rope"
                                   ? "Ropes / ziplines"
                                   : "Toggle doors";
@@ -4171,6 +4236,20 @@ export function MapShapeEditor({
               >
                 <ArrowDownUp className="h-3.5 w-3.5" />
                 Rope / zipline
+              </button>
+              <button
+                type="button"
+                onClick={() => addOverlay("spawn_barrier")}
+                disabled={!outlineReady}
+                title={
+                  outlineReady
+                    ? "Spawn barrier: open polyline at round-start blocker location"
+                    : "Define the map outline first"
+                }
+                className="btn-secondary inline-flex items-center gap-1 text-xs disabled:opacity-40"
+              >
+                <CircleSlash2 className="h-3.5 w-3.5" />
+                Spawn barrier
               </button>
             </div>
             {activeLayer.kind === "overlay" &&

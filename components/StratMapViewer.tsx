@@ -17,7 +17,7 @@ import type {
   MapOverlayKind,
   MapOverlayShape,
 } from "@/types/catalog";
-import type { StratSide } from "@/types/strat";
+import type { StratSide, StratStageLayerVisibility } from "@/types/strat";
 import { mapLabelTextSvgProps } from "@/lib/map-label-layout";
 import {
   circleToGradeClosedPoints,
@@ -34,6 +34,7 @@ import { clientToSvgPoint } from "@/lib/svg-coords";
 import type { MapPoint, ViewBoxRect } from "@/lib/map-path";
 import { RopeOverlaySvg } from "@/components/RopeOverlaySvg";
 import { MAP_VIEW_VECTOR_STROKE_SCALE } from "@/lib/map-view-stroke-scale";
+import { normalizeStratStageLayerVisibility } from "@/lib/strat-stage-layer-visibility";
 
 /** Read-only map overlay rendering (aligned with `MapShapeEditor` colors). */
 const SPAWN_ATK_FILL = "#ff3e3e";
@@ -42,6 +43,7 @@ const SPAWN_DEF_FILL = "#2563eb";
 const SPAWN_DEF_STROKE = "#ffffff";
 
 const BREAKABLE_DOORWAY_STROKE = "rgb(16, 185, 129)";
+const SPAWN_BARRIER_STROKE = "rgb(244, 114, 182)";
 
 const WALKABLE_LOWER_FILL = "rgba(120,53,18,0.22)";
 const WALKABLE_LOWER_STROKE = "rgb(234,88,12)";
@@ -67,7 +69,8 @@ function isOpenPolylineOverlayKind(kind: MapOverlayKind): boolean {
     kind === "grade" ||
     kind === "breakable_doorway" ||
     kind === "toggle_door" ||
-    kind === "rope"
+    kind === "rope" ||
+    kind === "spawn_barrier"
   );
 }
 
@@ -292,6 +295,7 @@ export type StratMapLayerVisibility = {
   breakable_doorway: boolean;
   toggle_door: boolean;
   rope: boolean;
+  spawn_barrier: boolean;
 };
 
 const DEFAULT_VISIBILITY: StratMapLayerVisibility = {
@@ -309,6 +313,7 @@ const DEFAULT_VISIBILITY: StratMapLayerVisibility = {
   breakable_doorway: true,
   toggle_door: true,
   rope: true,
+  spawn_barrier: true,
 };
 
 const MAP_VIEWPORT_MIN_H_PX = 200;
@@ -348,7 +353,7 @@ export type StratMapViewerProps = {
   side: StratSide;
   /** Extra SVG nodes drawn above map layers (e.g. strat stage pins). */
   children?: ReactNode;
-  /** When false, all layers stay visible and the checkbox strip is hidden. */
+  /** When false, the checkbox strip is hidden. */
   showLayerToggles?: boolean;
   /** When false, hides the zoom hint / Map shapes link below the SVG. */
   showFooter?: boolean;
@@ -357,6 +362,12 @@ export type StratMapViewerProps = {
    * and right-drag pan behavior.
    */
   embed?: boolean;
+  /** Initial layer visibility (e.g. stage-specific saved filters). */
+  initialVisibility?: Partial<StratStageLayerVisibility>;
+  /** Called when a layer checkbox is toggled. */
+  onVisibilityChange?: (next: StratMapLayerVisibility) => void;
+  /** Change this to reset visibility from `initialVisibility` (e.g. stage id). */
+  visibilityScopeKey?: string;
 };
 
 export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
@@ -368,6 +379,9 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
       showLayerToggles = true,
       showFooter = true,
       embed = false,
+      initialVisibility,
+      onVisibilityChange,
+      visibilityScopeKey,
     },
     ref,
   ) {
@@ -380,8 +394,10 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
   });
   const panDragRef = useRef<PanDragState | null>(null);
 
-  const [vis, setVis] = useState<StratMapLayerVisibility>(DEFAULT_VISIBILITY);
-  const effectiveVis = showLayerToggles ? vis : DEFAULT_VISIBILITY;
+  const [vis, setVis] = useState<StratMapLayerVisibility>(() =>
+    normalizeStratStageLayerVisibility(initialVisibility),
+  );
+  const effectiveVis = vis;
   /** Zoom/pan window in SVG user units (editor-style; not persisted). */
   const [viewport, setViewport] = useState<ViewBoxRect | null>(null);
   const [rightPanning, setRightPanning] = useState(false);
@@ -419,6 +435,10 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
   useEffect(() => {
     setViewport(null);
   }, [gameMap.id, side]);
+
+  useEffect(() => {
+    setVis(normalizeStratStageLayerVisibility(initialVisibility));
+  }, [initialVisibility, visibilityScopeKey]);
 
   useEffect(() => {
     const el = svgRef.current;
@@ -559,7 +579,11 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
         className="rounded border-violet-600/60"
         checked={vis[id]}
         onChange={(e) =>
-          setVis((v) => ({ ...v, [id]: e.target.checked }))
+          setVis((v) => {
+            const next = { ...v, [id]: e.target.checked };
+            onVisibilityChange?.(next);
+            return next;
+          })
         }
       />
       {label}
@@ -590,6 +614,7 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
           {toggleRow("breakable_doorway", "Breakable doors")}
           {toggleRow("toggle_door", "Toggle doors")}
           {toggleRow("rope", "Ropes / ziplines")}
+          {toggleRow("spawn_barrier", "Spawn barriers")}
         </div>
       ) : null}
 
@@ -685,6 +710,38 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
                   <g key={sh.id}>
                     <RopeOverlaySvg sh={sh} vbWidth={vbW} />
                   </g>
+                );
+              }
+              if (sh.kind === "spawn_barrier") {
+                const pts = sh.points;
+                if (pts.length === 0) return null;
+                if (pts.length === 1) {
+                  const p = pts[0]!;
+                  return (
+                    <circle
+                      key={sh.id}
+                      cx={p.x}
+                      cy={p.y}
+                      r={vbW * 0.006}
+                      fill={SPAWN_BARRIER_STROKE}
+                    />
+                  );
+                }
+                const d = pts
+                  .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
+                  .join(" ");
+                return (
+                  <path
+                    key={sh.id}
+                    d={d}
+                    fill="none"
+                    stroke={SPAWN_BARRIER_STROKE}
+                    strokeWidth={vbW * 0.0042 * MAP_VIEW_VECTOR_STROKE_SCALE}
+                    strokeDasharray="12 8"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    opacity={0.9}
+                  />
                 );
               }
               if (sh.kind === "grade") {

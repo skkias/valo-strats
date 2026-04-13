@@ -198,6 +198,37 @@ export function BlueprintPlacementPreview({
     }
   }
 
+  if (kind === "vision_cone_narrow" || kind === "vision_cone_wide") {
+    if (pts.length !== 1) return null;
+    const o = pts[0]!;
+    const dx = c.x - o.x;
+    const dy = c.y - o.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-6) return null;
+    const ux = dx / len;
+    const uy = dy / len;
+    const halfDeg = kind === "vision_cone_wide" ? 55 : 30;
+    const ang = (halfDeg * Math.PI) / 180;
+    const ca = Math.cos(ang);
+    const sa = Math.sin(ang);
+    const ldx = (ux * ca - uy * sa) * len;
+    const ldy = (ux * sa + uy * ca) * len;
+    const rdx = (ux * ca + uy * sa) * len;
+    const rdy = (-ux * sa + uy * ca) * len;
+    return (
+      <g pointerEvents="none" opacity={0.6}>
+        <polygon
+          points={`${o.x},${o.y} ${o.x + ldx},${o.y + ldy} ${o.x + rdx},${o.y + rdy}`}
+          fill="rgba(167,139,250,0.16)"
+          stroke="rgb(192, 132, 252)"
+          strokeWidth={sw}
+          strokeDasharray={dash}
+          strokeLinejoin="round"
+        />
+      </g>
+    );
+  }
+
   if (kind === "rectangle" && pts.length === 1) {
     const a = pts[0]!;
     const x = Math.min(a.x, c.x);

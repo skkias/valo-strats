@@ -30,9 +30,29 @@ export interface StratStage {
   notes: string;
   agents: StratPlacedAgent[];
   abilities: StratPlacedAbility[];
+  /** Saved map layer filters for this stage (viewer + coach). */
+  mapLayerVisibility?: StratStageLayerVisibility;
   /** Used when leaving this stage for the next (ignored on the last stage). */
   transition: StratStageTransition;
   transitionMs: number;
+}
+
+export interface StratStageLayerVisibility {
+  territoryOutline: boolean;
+  labels: boolean;
+  spawnAtk: boolean;
+  spawnDef: boolean;
+  floorLower: boolean;
+  floorUpper: boolean;
+  obstacle: boolean;
+  elevation: boolean;
+  wall: boolean;
+  plant_site: boolean;
+  grade: boolean;
+  breakable_doorway: boolean;
+  toggle_door: boolean;
+  rope: boolean;
+  spawn_barrier: boolean;
 }
 
 export interface StratImage {

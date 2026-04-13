@@ -20,6 +20,8 @@ export type AgentAbilityShapeKind =
   | "circle"
   | "ray"
   | "cone"
+  | "vision_cone_narrow"
+  | "vision_cone_wide"
   | "polyline"
   | "polygon"
   | "rectangle"
@@ -106,6 +108,11 @@ export interface AgentAbilityBlueprint {
   color: string;
   /** Optional texture/pattern fill used by map + editor previews. */
   textureId?: AbilityTextureId;
+  /**
+   * When true, texture tile phase is centered on the blueprint origin so radial/rings
+   * textures emit from placement origin (e.g. half-rings from an edge anchor).
+   */
+  textureRadialFromOrigin?: boolean;
   geometry: AgentAbilityGeometry;
   /**
    * Blueprint-space pivot: this point is placed on the strat map; rotation turns around it.

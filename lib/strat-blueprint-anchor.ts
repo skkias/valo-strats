@@ -37,6 +37,8 @@ export function defaultStratPlacementForShape(
     case "polygon":
     case "movement":
     case "cone":
+    case "vision_cone_narrow":
+    case "vision_cone_wide":
     case "ray":
       return "origin_direction";
     default:
