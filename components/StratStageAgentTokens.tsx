@@ -28,7 +28,6 @@ export type StratAgentTokenTransition = {
 } | null;
 
 type Interactive = {
-  placementModeBlocks: boolean;
   selectedId: string | null;
   onPointerDown: (
     agent: StratPlacedAgent,
@@ -166,17 +165,12 @@ export function StratStageAgentTokens({
             onPointerDown={
               interactive
                 ? (e) => {
-                    if (interactive.placementModeBlocks) return;
                     interactive.onPointerDown(a, pos, e);
                   }
                 : undefined
             }
             style={{
-              cursor: interactive
-                ? interactive.placementModeBlocks
-                  ? "default"
-                  : "grab"
-                : undefined,
+              cursor: interactive ? "grab" : undefined,
             }}
           >
             <g style={innerStyle}>

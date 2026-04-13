@@ -179,6 +179,7 @@ export function StratStageEditor({
   mapMountEl: HTMLElement | null;
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const dragSvgRef = useRef<SVGSVGElement | null>(null);
   const [activeStageIndex, setActiveStageIndex] = useState(0);
   const [placementMode, setPlacementMode] = useState<PlacementMode>(null);
   /** Display-space end point while choosing ability facing (second click). */
@@ -512,16 +513,12 @@ export function StratStageEditor({
       if (!selectedId || !activeStage) return;
       e.preventDefault();
       const id = selectedId;
-      setAgents(
-        activeStageIndex,
-        activeStage.agents.filter((a) => a.id !== id),
-      );
-      setAbilities(
-        activeStageIndex,
-        activeStage.abilities.filter(
+      patchStage(activeStageIndex, {
+        agents: activeStage.agents.filter((a) => a.id !== id),
+        abilities: activeStage.abilities.filter(
           (a) => a.id !== id && a.attachedToAgentId !== id,
         ),
-      );
+      });
       setSelectedId(null);
     };
     window.addEventListener("keydown", onKey);
@@ -530,14 +527,21 @@ export function StratStageEditor({
     selectedId,
     activeStage,
     activeStageIndex,
+    patchStage,
     setAgents,
     setAbilities,
   ]);
 
   useEffect(() => {
+    if (!drag) {
+      dragSvgRef.current = null;
+    }
+  }, [drag]);
+
+  useEffect(() => {
     if (!drag) return;
     const onMove = (e: PointerEvent) => {
-      const svg = svgRef.current;
+      const svg = dragSvgRef.current ?? svgRef.current;
       if (!svg || !activeStage) return;
       const raw = svgPointerToLogical(svg, e.clientX, e.clientY);
       const p =
@@ -557,20 +561,16 @@ export function StratStageEditor({
               }),
             );
       if (drag.kind === "agent") {
-        setAgents(
-          activeStageIndex,
-          activeStage.agents.map((a) =>
+        patchStage(activeStageIndex, {
+          agents: activeStage.agents.map((a) =>
             a.id === drag.id ? { ...a, x: p.x, y: p.y } : a,
           ),
-        );
-        setAbilities(
-          activeStageIndex,
-          activeStage.abilities.map((ab) =>
+          abilities: activeStage.abilities.map((ab) =>
             ab.attachedToAgentId === drag.id
               ? { ...ab, x: p.x, y: p.y }
               : ab,
           ),
-        );
+        });
       } else if (drag.kind === "ability") {
         const cur = activeStage.abilities.find((x) => x.id === drag.id);
         if (cur?.attachedToAgentId) return;
@@ -644,19 +644,30 @@ export function StratStageEditor({
     };
     const onUp = (e: PointerEvent) => {
       if (e.pointerId !== drag.pointerId) return;
+      const svg = dragSvgRef.current ?? svgRef.current;
+      if (svg) {
+        try {
+          if (svg.hasPointerCapture(drag.pointerId)) {
+            svg.releasePointerCapture(drag.pointerId);
+          }
+        } catch {
+          /* ignore capture release errors */
+        }
+      }
       if (drag.kind === "agentVisionConeRotate") {
         lastVisionConeHandleAlongRef.current[drag.agentId] =
           drag.handleAlongDist;
       }
+      dragSvgRef.current = null;
       setDrag(null);
     };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    window.addEventListener("pointercancel", onUp);
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
     return () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      window.removeEventListener("pointercancel", onUp);
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
     };
   }, [
     drag,
@@ -664,6 +675,7 @@ export function StratStageEditor({
     activeStageIndex,
     vb,
     side,
+    patchStage,
     setAgents,
     setAbilities,
     svgPointerToLogical,
@@ -1299,15 +1311,20 @@ export function StratStageEditor({
         transition={agentStageTrans}
         pinScale={mapPinScale}
         interactive={{
-          placementModeBlocks: placementMode != null,
           selectedId,
           onPointerDown: (a, pos, e) => {
             e.stopPropagation();
-            if (placementMode) return;
             setSelectedId(a.id);
             focusMapSvg();
-            const svg = svgRef.current;
+            const svg =
+              (e.currentTarget as SVGGElement).ownerSVGElement ?? svgRef.current;
             if (svg) {
+              dragSvgRef.current = svg;
+              try {
+                svg.setPointerCapture(e.pointerId);
+              } catch {
+                /* capture may fail on some synthetic pointer sources */
+              }
               const o = svgPointerToLogical(svg, e.clientX, e.clientY);
               setDrag({
                 kind: "agent",

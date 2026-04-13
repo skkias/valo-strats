@@ -51,7 +51,8 @@ export function StratAgentMapPinSvg({
         */}
         <circle
           r={tokenR}
-          fill="transparent"
+          fill="#000"
+          fillOpacity={0.001}
           style={{ pointerEvents: "all" }}
         />
         <defs>
@@ -67,6 +68,7 @@ export function StratAgentMapPinSvg({
             width={tokenR * 2}
             height={tokenR * 2}
             preserveAspectRatio="xMidYMid slice"
+            style={{ pointerEvents: "none" }}
           />
         </g>
         <circle
