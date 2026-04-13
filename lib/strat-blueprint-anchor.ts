@@ -54,3 +54,33 @@ export function effectiveStratPlacementMode(
     defaultStratPlacementForShape(blueprint.shapeKind)
   );
 }
+
+/** Shapes that can use {@link AgentAbilityBlueprint.stratAttachToAgent} on the strat map. */
+export function blueprintSupportsStratAttachToAgent(
+  shapeKind: AgentAbilityShapeKind,
+): boolean {
+  switch (shapeKind) {
+    case "rectangle":
+    case "arc":
+    case "cone":
+    case "circle":
+    case "polygon":
+    case "polyline":
+    case "ray":
+    case "vision_cone_narrow":
+    case "vision_cone_wide":
+    case "point":
+      return true;
+    default:
+      return false;
+  }
+}
+
+export function effectiveStratAttachToAgent(
+  blueprint: AgentAbilityBlueprint,
+): boolean {
+  return (
+    blueprint.stratAttachToAgent === true &&
+    blueprintSupportsStratAttachToAgent(blueprint.shapeKind)
+  );
+}

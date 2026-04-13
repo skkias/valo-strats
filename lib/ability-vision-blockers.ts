@@ -4,7 +4,12 @@ import type {
   AgentAbilityGeometry,
   AgentAbilityShapeKind,
 } from "@/types/agent-ability";
-import type { StratPlacedAbility, StratSide } from "@/types/strat";
+import type {
+  StratPlacedAbility,
+  StratPlacedAgent,
+  StratSide,
+} from "@/types/strat";
+import { resolvedPlacedAbilityStoredPosition } from "@/lib/strat-placed-ability-position";
 import type { MapPoint, ViewBoxRect } from "@/lib/map-path";
 import { blueprintPointToStratMapDisplay } from "@/lib/strat-blueprint-map-point";
 import { stratAnchorOverrideForBlueprint } from "@/lib/strat-blueprint-map-point";
@@ -211,6 +216,8 @@ export function appendPlacedAbilitiesVisionBlockers(
   ctx: VisionLosContext,
   input: {
     placedAbilities: StratPlacedAbility[];
+    /** Stage agent tokens (for abilities with `attachedToAgentId`). */
+    stageAgents: StratPlacedAgent[];
     agentsCatalog: Agent[];
     vb: ViewBoxRect;
     side: StratSide;
@@ -240,9 +247,10 @@ export function appendPlacedAbilitiesVisionBlockers(
     );
     if (!bp || bp.blocksVision !== true) continue;
 
+    const st = resolvedPlacedAbilityStoredPosition(ab, input.stageAgents);
     const pos = stratStagePinForDisplay(input.vb, input.side, {
-      x: ab.x,
-      y: ab.y,
+      x: st.x,
+      y: st.y,
     });
     const delta = abilityVisionBlockersOnMap(
       bp,

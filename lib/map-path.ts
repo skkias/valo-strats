@@ -82,6 +82,54 @@ export function clampPointToViewBox(vb: ViewBoxRect, p: MapPoint): MapPoint {
 }
 
 /**
+ * Interval of ray parameter t ≥ 0 where `o + t * dir` lies inside the view box
+ * (inclusive of the exit boundary). `dir` need not be unit length; t scales with
+ * `||dir||`. Returns null if the ray never intersects the box interior.
+ */
+export function forwardRayViewBoxTInterval(
+  vb: ViewBoxRect,
+  o: MapPoint,
+  dir: MapPoint,
+): { tMin: number; tMax: number } | null {
+  const minX = vb.minX;
+  const maxX = vb.minX + vb.width;
+  const minY = vb.minY;
+  const maxY = vb.minY + vb.height;
+  const { x: ox, y: oy } = o;
+  const { x: dx, y: dy } = dir;
+
+  const EPS = 1e-9;
+
+  let tEnter = -Infinity;
+  let tExit = Infinity;
+
+  if (Math.abs(dx) < EPS) {
+    if (ox < minX - EPS || ox > maxX + EPS) return null;
+  } else {
+    const tx1 = (minX - ox) / dx;
+    const tx2 = (maxX - ox) / dx;
+    tEnter = Math.max(tEnter, Math.min(tx1, tx2));
+    tExit = Math.min(tExit, Math.max(tx1, tx2));
+  }
+
+  if (Math.abs(dy) < EPS) {
+    if (oy < minY - EPS || oy > maxY + EPS) return null;
+  } else {
+    const ty1 = (minY - oy) / dy;
+    const ty2 = (maxY - oy) / dy;
+    tEnter = Math.max(tEnter, Math.min(ty1, ty2));
+    tExit = Math.min(tExit, Math.max(ty1, ty2));
+  }
+
+  if (tEnter > tExit) return null;
+
+  const tMin = Math.max(0, tEnter);
+  const tMax = tExit;
+  if (tMin > tMax + EPS) return null;
+  return { tMin, tMax };
+}
+
+/**
  * Reflect points across the horizontal midline of the viewBox (mirror top ↔ bottom).
  * Matches “same shape flipped over the x-axis” through the map center in viewBox space.
  */

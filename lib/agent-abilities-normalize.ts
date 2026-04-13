@@ -8,6 +8,7 @@ import type {
 import type { MapPoint } from "@/lib/map-path";
 import { normalizeAbilityTextureId } from "@/lib/ability-textures";
 import { shapeSupportsVisionObstructionModes } from "@/lib/ability-vision-blockers";
+import { blueprintSupportsStratAttachToAgent } from "@/lib/strat-blueprint-anchor";
 
 const SLOTS: AgentAbilitySlot[] = ["q", "e", "c", "x"];
 
@@ -304,6 +305,12 @@ export function normalizeAgentAbilityBlueprint(raw: unknown): AgentAbilityBluepr
   const visionObstructionIn = normalizeVisionObstruction(
     o.visionObstruction ?? o.vision_obstruction,
   );
+  const stratAttachRaw = o.stratAttachToAgent ?? o.strat_attach_to_agent;
+  const stratAttachToAgent =
+    stratAttachRaw === true &&
+    blueprintSupportsStratAttachToAgent(shapeKind)
+      ? true
+      : undefined;
   const base: AgentAbilityBlueprint = {
     id,
     slot,
@@ -332,6 +339,7 @@ export function normalizeAgentAbilityBlueprint(raw: unknown): AgentAbilityBluepr
       base.visionObstruction = "hollow";
     }
   }
+  if (stratAttachToAgent === true) base.stratAttachToAgent = true;
   return base;
 }
 

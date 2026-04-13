@@ -24,6 +24,10 @@ export interface StratPlacedAbility {
   x: number;
   y: number;
   /**
+   * When set, `x`/`y` are kept equal to this agent token and the ability moves with it.
+   */
+  attachedToAgentId?: string;
+  /**
    * Rotation in degrees: blueprint +X axis aligns with this heading on the map (origin placement).
    * Omitted → 0.
    */

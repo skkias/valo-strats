@@ -1,4 +1,19 @@
-import type { StratVisionConeWidth } from "@/types/strat";
+import {
+  forwardRayViewBoxTInterval,
+  type MapPoint,
+  type ViewBoxRect,
+} from "@/lib/map-path";
+import { stratStagePinForDisplay } from "@/lib/strat-stage-coords";
+import {
+  computeVisionConeRayEnd,
+  isVisionOriginInPlayable,
+  type VisionLosContext,
+} from "@/lib/vision-cone-los";
+import type {
+  StratPlacedAgent,
+  StratSide,
+  StratVisionConeWidth,
+} from "@/types/strat";
 
 /** Half-angle (degrees) for the wide agent-attached vision cone. */
 export const STRAT_AGENT_VISION_CONE_WIDE_HALF_DEG = 52;
@@ -41,4 +56,70 @@ export function stratAgentVisionConeDisplayHints(
   const hx = origin.x + Math.cos(base) * handleDist;
   const hy = origin.y + Math.sin(base) * handleDist;
   return { lx, ly, rx, ry, hx, hy };
+}
+
+/** Center look ray in SVG / strat display space (same frame as `stratStagePinForDisplay`). */
+export function stratAgentVisionConeRayInDisplay(args: {
+  vb: ViewBoxRect;
+  side: StratSide;
+  vbWidth: number;
+  /** Coach pin scale (`clampCoachMapPinScale(mapPinScale)`), same as wedge rendering. */
+  pinS: number;
+  agent: StratPlacedAgent;
+  width: StratVisionConeWidth;
+  visionLosContext: VisionLosContext | null;
+}): { pos: MapPoint; rayEnd: MapPoint; dir: MapPoint; lenRay: number } {
+  const { vb, side, vbWidth, pinS, agent, width, visionLosContext } = args;
+  const pos = stratStagePinForDisplay(vb, side, { x: agent.x, y: agent.y });
+  const rot = agent.visionConeRotationDeg ?? 0;
+  const rotRad = (rot * Math.PI) / 180;
+  const sh = stratAgentVisionConeDisplayHints(
+    pos,
+    vbWidth,
+    width,
+    rot,
+    pinS,
+  );
+  const coneMidRange = Math.hypot(sh.hx - pos.x, sh.hy - pos.y) / 0.78;
+  const inPlayable =
+    visionLosContext != null &&
+    isVisionOriginInPlayable(pos, visionLosContext);
+  const rayEnd =
+    visionLosContext && inPlayable
+      ? computeVisionConeRayEnd({
+          origin: pos,
+          angleRad: rotRad,
+          context: visionLosContext,
+        })
+      : {
+          x: pos.x + Math.cos(rotRad) * coneMidRange,
+          y: pos.y + Math.sin(rotRad) * coneMidRange,
+        };
+  let dx = rayEnd.x - pos.x;
+  let dy = rayEnd.y - pos.y;
+  let lenRay = Math.hypot(dx, dy);
+  if (lenRay < 1e-6) {
+    dx = Math.cos(rotRad);
+    dy = Math.sin(rotRad);
+    lenRay = Math.max(vbWidth * 0.08 * pinS, 1e-3);
+  }
+  const dir = { x: dx / lenRay, y: dy / lenRay };
+  return { pos, rayEnd, dir, lenRay };
+}
+
+/** Allowed distance along the look ray for the draggable handle (display space). */
+export function stratAgentVisionConeHandleAlongBounds(args: {
+  vb: ViewBoxRect;
+  pos: MapPoint;
+  dir: MapPoint;
+  lenRay: number;
+  vbWidth: number;
+  pinS: number;
+}): { sNear: number; sFar: number } {
+  const { vb, pos, dir, lenRay, vbWidth, pinS } = args;
+  const sNear = Math.max(vbWidth * 0.01 * pinS, 2.2 * pinS);
+  const boxIv = forwardRayViewBoxTInterval(vb, pos, dir);
+  const maxMapT = boxIv ? boxIv.tMax : lenRay;
+  const sFar = Math.max(sNear, Math.min(lenRay, maxMapT) - 1e-4);
+  return { sNear, sFar };
 }

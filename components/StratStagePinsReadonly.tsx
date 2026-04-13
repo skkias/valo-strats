@@ -25,6 +25,7 @@ import {
   stratAbilityPinDimensions,
 } from "@/lib/strat-map-pin-scale";
 import { appendPlacedAbilitiesVisionBlockers } from "@/lib/ability-vision-blockers";
+import { resolvedPlacedAbilityStoredPosition } from "@/lib/strat-placed-ability-position";
 import {
   buildVisionLosContext,
   computeVisionConeLosPolygon,
@@ -116,6 +117,7 @@ export function StratStagePinsReadonly({
     if (!visionLosBase) return null;
     return appendPlacedAbilitiesVisionBlockers(visionLosBase, {
       placedAbilities: stage.abilities,
+      stageAgents: stage.agents,
       agentsCatalog,
       vb,
       side,
@@ -125,6 +127,7 @@ export function StratStagePinsReadonly({
   }, [
     visionLosBase,
     stage.abilities,
+    stage.agents,
     agentsCatalog,
     vb,
     side,
@@ -139,6 +142,7 @@ export function StratStagePinsReadonly({
         ab.id,
         appendPlacedAbilitiesVisionBlockers(visionLosBase, {
           placedAbilities: stage.abilities,
+          stageAgents: stage.agents,
           agentsCatalog,
           vb,
           side,
@@ -152,6 +156,7 @@ export function StratStagePinsReadonly({
   }, [
     visionLosBase,
     stage.abilities,
+    stage.agents,
     agentsCatalog,
     vb,
     side,
@@ -203,7 +208,8 @@ export function StratStagePinsReadonly({
         const agentTheme =
           agentsCatalog.find((a) => a.slug === ab.agentSlug)?.theme_color ??
           "rgb(34,211,238)";
-        const pos = stratStagePinForDisplay(vb, side, { x: ab.x, y: ab.y });
+        const st = resolvedPlacedAbilityStoredPosition(ab, stage.agents);
+        const pos = stratStagePinForDisplay(vb, side, { x: st.x, y: st.y });
         const bp = agentBlueprintForSlot(agentsCatalog, ab.agentSlug, ab.slot);
         const stratOv = bp ? stratAnchorOverrideForBlueprint(bp) : undefined;
 

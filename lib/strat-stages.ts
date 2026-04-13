@@ -106,8 +106,14 @@ function normalizeAbility(raw: unknown): StratPlacedAbility | null {
   const y = isFiniteNum(o.y) ? o.y : 0;
   const rotRaw = o.rotationDeg ?? o.rotation_deg;
   const rotationDeg = isFiniteNum(rotRaw) ? rotRaw : undefined;
+  const attachedRaw = o.attachedToAgentId ?? o.attached_to_agent_id;
+  const attachedToAgentId =
+    typeof attachedRaw === "string" && attachedRaw.trim()
+      ? attachedRaw.trim()
+      : undefined;
   const out: StratPlacedAbility = { id, agentSlug, slot, x, y };
   if (rotationDeg !== undefined) out.rotationDeg = rotationDeg;
+  if (attachedToAgentId) out.attachedToAgentId = attachedToAgentId;
   return out;
 }
 

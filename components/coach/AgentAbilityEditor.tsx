@@ -39,6 +39,7 @@ import {
 import { viewBoxRectFromMap } from "@/lib/strat-map-display";
 import {
   blueprintStratAnchor,
+  blueprintSupportsStratAttachToAgent,
   defaultStratPlacementForShape,
   effectiveStratPlacementMode,
 } from "@/lib/strat-blueprint-anchor";
@@ -875,6 +876,7 @@ export function AgentAbilityEditor({
           AgentAbilityBlueprint,
           | "origin"
           | "stratPlacementMode"
+          | "stratAttachToAgent"
           | "pointIconShow"
           | "pointIconScale"
           | "textureId"
@@ -898,6 +900,13 @@ export function AgentAbilityEditor({
               delete n.stratPlacementMode;
             } else {
               n.stratPlacementMode = patch.stratPlacementMode;
+            }
+          }
+          if ("stratAttachToAgent" in patch) {
+            if (patch.stratAttachToAgent === true) {
+              n.stratAttachToAgent = true;
+            } else {
+              delete n.stratAttachToAgent;
             }
           }
           if ("pointIconShow" in patch) {
@@ -1713,6 +1722,31 @@ export function AgentAbilityEditor({
                             </option>
                           </select>
                         </label>
+                        {blueprintSupportsStratAttachToAgent(selected.shapeKind) ? (
+                          <>
+                            <label className="mt-2 flex cursor-pointer items-center gap-2 text-[11px] text-violet-200/90">
+                              <input
+                                type="checkbox"
+                                checked={selected.stratAttachToAgent === true}
+                                onChange={(e) =>
+                                  updateSelectedBlueprintMeta({
+                                    stratAttachToAgent: e.target.checked
+                                      ? true
+                                      : undefined,
+                                  })
+                                }
+                                className="rounded border-violet-600/60"
+                              />
+                              Attach to agent token on strats
+                            </label>
+                            <p className="text-[10px] leading-snug text-violet-500/80">
+                              Pin stays on the agent; drag the agent to move it. With
+                              &quot;two clicks&quot; placement, one map click aims
+                              from the token. Rectangles (e.g. Paranoia) rotate around
+                              the pin like normal.
+                            </p>
+                          </>
+                        ) : null}
                       </>
                     );
                   })()}

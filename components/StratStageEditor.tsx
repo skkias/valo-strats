@@ -59,7 +59,10 @@ import {
   stratStagePinForDisplay,
   stratStagePinToStoredAttack,
 } from "@/lib/strat-stage-coords";
-import { effectiveStratPlacementMode } from "@/lib/strat-blueprint-anchor";
+import {
+  effectiveStratAttachToAgent,
+  effectiveStratPlacementMode,
+} from "@/lib/strat-blueprint-anchor";
 import {
   stratAbilityRotationHandleDistance,
   stratAbilityRotationHandleStored,
@@ -71,9 +74,12 @@ import {
 } from "@/lib/strat-blueprint-map-point";
 import { appendPlacedAbilitiesVisionBlockers } from "@/lib/ability-vision-blockers";
 import {
+  resolveStratAttachAgent,
+  resolvedPlacedAbilityStoredPosition,
+} from "@/lib/strat-placed-ability-position";
+import {
   buildVisionLosContext,
   computeVisionConeLosPolygon,
-  computeVisionConeRayEnd,
   isVisionOriginInPlayable,
   type VisionLosContext,
 } from "@/lib/vision-cone-los";
@@ -81,7 +87,11 @@ import {
   catalogDefaultDoorOpen,
   effectiveDoorIsOpen,
 } from "@/lib/strat-stage-door-states";
-import { stratAgentVisionConeDisplayHints } from "@/lib/strat-agent-vision-cone";
+import {
+  stratAgentVisionConeDisplayHints,
+  stratAgentVisionConeHandleAlongBounds,
+  stratAgentVisionConeRayInDisplay,
+} from "@/lib/strat-agent-vision-cone";
 
 type PlacementMode =
   | null
@@ -125,6 +135,8 @@ type DragState =
       kind: "agentVisionConeRotate";
       agentId: string;
       pointerId: number;
+      /** Distance along look ray in display space; clamped to [sNear, sFar]. */
+      handleAlongDist: number;
     }
   | null;
 
@@ -188,6 +200,8 @@ export function StratStageEditor({
   const [valorantUiError, setValorantUiError] = useState<string | null>(null);
 
   const didMountRef = useRef(false);
+  /** Remember vision-cone handle distance along the look ray (display space) after drag. */
+  const lastVisionConeHandleAlongRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
     setPlacementMode(null);
@@ -306,6 +320,7 @@ export function StratStageEditor({
     if (!visionLosBase) return null;
     return appendPlacedAbilitiesVisionBlockers(visionLosBase, {
       placedAbilities: activeStage?.abilities ?? [],
+      stageAgents: activeStage?.agents ?? [],
       agentsCatalog,
       vb,
       side,
@@ -315,6 +330,7 @@ export function StratStageEditor({
   }, [
     visionLosBase,
     activeStage?.abilities,
+    activeStage?.agents,
     agentsCatalog,
     vb,
     side,
@@ -330,6 +346,7 @@ export function StratStageEditor({
         ab.id,
         appendPlacedAbilitiesVisionBlockers(visionLosBase, {
           placedAbilities: placed,
+          stageAgents: activeStage?.agents ?? [],
           agentsCatalog,
           vb,
           side,
@@ -343,12 +360,68 @@ export function StratStageEditor({
   }, [
     visionLosBase,
     activeStage?.abilities,
+    activeStage?.agents,
     agentsCatalog,
     vb,
     side,
     vbWidth,
     mapPinScale,
   ]);
+
+  const beginAgentVisionConeInteraction = useCallback(
+    (
+      e: React.PointerEvent,
+      agent: StratPlacedAgent,
+      width: NonNullable<StratPlacedAgent["visionConeWidth"]>,
+    ) => {
+      e.stopPropagation();
+      if (placementMode) return;
+      setSelectedId(agent.id);
+      focusMapSvg();
+      const svg = svgRef.current;
+      if (!svg) return;
+      const raw = svgPointerToLogical(svg, e.clientX, e.clientY);
+      const qDisp = clampPointToViewBox(vb, raw);
+      const pinS = clampCoachMapPinScale(mapPinScale);
+      const ray = stratAgentVisionConeRayInDisplay({
+        vb,
+        side,
+        vbWidth,
+        pinS,
+        agent,
+        width,
+        visionLosContext: visionLosContextMerged,
+      });
+      const { sNear, sFar } = stratAgentVisionConeHandleAlongBounds({
+        vb,
+        pos: ray.pos,
+        dir: ray.dir,
+        lenRay: ray.lenRay,
+        vbWidth,
+        pinS,
+      });
+      const s =
+        (qDisp.x - ray.pos.x) * ray.dir.x +
+        (qDisp.y - ray.pos.y) * ray.dir.y;
+      const handleAlongDist = Math.min(sFar, Math.max(sNear, s));
+      setDrag({
+        kind: "agentVisionConeRotate",
+        agentId: agent.id,
+        pointerId: e.pointerId,
+        handleAlongDist,
+      });
+    },
+    [
+      placementMode,
+      focusMapSvg,
+      svgPointerToLogical,
+      vb,
+      side,
+      vbWidth,
+      mapPinScale,
+      visionLosContextMerged,
+    ],
+  );
 
   useEffect(() => {
     if (safeIndex !== activeStageIndex) {
@@ -445,7 +518,9 @@ export function StratStageEditor({
       );
       setAbilities(
         activeStageIndex,
-        activeStage.abilities.filter((a) => a.id !== id),
+        activeStage.abilities.filter(
+          (a) => a.id !== id && a.attachedToAgentId !== id,
+        ),
       );
       setSelectedId(null);
     };
@@ -488,7 +563,17 @@ export function StratStageEditor({
             a.id === drag.id ? { ...a, x: p.x, y: p.y } : a,
           ),
         );
+        setAbilities(
+          activeStageIndex,
+          activeStage.abilities.map((ab) =>
+            ab.attachedToAgentId === drag.id
+              ? { ...ab, x: p.x, y: p.y }
+              : ab,
+          ),
+        );
       } else if (drag.kind === "ability") {
+        const cur = activeStage.abilities.find((x) => x.id === drag.id);
+        if (cur?.attachedToAgentId) return;
         setAbilities(
           activeStageIndex,
           activeStage.abilities.map((a) =>
@@ -496,6 +581,8 @@ export function StratStageEditor({
           ),
         );
       } else if (drag.kind === "abilityOrigin") {
+        const cur = activeStage.abilities.find((x) => x.id === drag.id);
+        if (cur?.attachedToAgentId) return;
         setAbilities(
           activeStageIndex,
           activeStage.abilities.map((a) =>
@@ -513,19 +600,54 @@ export function StratStageEditor({
           }),
         );
       } else if (drag.kind === "agentVisionConeRotate") {
+        const qDisp = clampPointToViewBox(vb, raw);
+        const pinS = clampCoachMapPinScale(mapPinScale);
+        const a = activeStage.agents.find((x) => x.id === drag.agentId);
+        if (!a?.visionConeWidth) return;
+        const rotationDeg =
+          (Math.atan2(p.y - a.y, p.x - a.x) * 180) / Math.PI;
+        const aNext = { ...a, visionConeRotationDeg: rotationDeg };
+        const ray = stratAgentVisionConeRayInDisplay({
+          vb,
+          side,
+          vbWidth,
+          pinS,
+          agent: aNext,
+          width: a.visionConeWidth,
+          visionLosContext: visionLosContextMerged,
+        });
+        const { sNear, sFar } = stratAgentVisionConeHandleAlongBounds({
+          vb,
+          pos: ray.pos,
+          dir: ray.dir,
+          lenRay: ray.lenRay,
+          vbWidth,
+          pinS,
+        });
+        const s =
+          (qDisp.x - ray.pos.x) * ray.dir.x +
+          (qDisp.y - ray.pos.y) * ray.dir.y;
+        const handleAlongDist = Math.min(sFar, Math.max(sNear, s));
         setAgents(
           activeStageIndex,
-          activeStage.agents.map((a) => {
-            if (a.id !== drag.agentId || !a.visionConeWidth) return a;
-            const rotationDeg =
-              (Math.atan2(p.y - a.y, p.x - a.x) * 180) / Math.PI;
-            return { ...a, visionConeRotationDeg: rotationDeg };
-          }),
+          activeStage.agents.map((ag) =>
+            ag.id === drag.agentId ? aNext : ag,
+          ),
         );
+        setDrag({
+          kind: "agentVisionConeRotate",
+          agentId: drag.agentId,
+          pointerId: drag.pointerId,
+          handleAlongDist,
+        });
       }
     };
     const onUp = (e: PointerEvent) => {
       if (e.pointerId !== drag.pointerId) return;
+      if (drag.kind === "agentVisionConeRotate") {
+        lastVisionConeHandleAlongRef.current[drag.agentId] =
+          drag.handleAlongDist;
+      }
       setDrag(null);
     };
     window.addEventListener("pointermove", onMove);
@@ -545,6 +667,9 @@ export function StratStageEditor({
     setAgents,
     setAbilities,
     svgPointerToLogical,
+    visionLosContextMerged,
+    vbWidth,
+    mapPinScale,
   ]);
 
   function onMapBackgroundPointerDown(e: React.PointerEvent) {
@@ -581,6 +706,47 @@ export function StratStageEditor({
     const placeMode = bp
       ? effectiveStratPlacementMode(bp)
       : "center";
+    const attach = bp != null && effectiveStratAttachToAgent(bp);
+
+    if (attach) {
+      const ag = resolveStratAttachAgent(
+        activeStage,
+        placementMode.slug,
+        selectedId,
+      );
+      if (!ag) {
+        setPlacementMode(null);
+        return;
+      }
+      if (placeMode === "origin_direction") {
+        const rotationDeg =
+          (Math.atan2(p.y - ag.y, p.x - ag.x) * 180) / Math.PI;
+        const next: StratPlacedAbility = {
+          id: newItemId(),
+          agentSlug: placementMode.slug,
+          slot: placementMode.slot,
+          x: ag.x,
+          y: ag.y,
+          rotationDeg,
+          attachedToAgentId: ag.id,
+        };
+        setAbilities(activeStageIndex, [...activeStage.abilities, next]);
+      } else {
+        const next: StratPlacedAbility = {
+          id: newItemId(),
+          agentSlug: placementMode.slug,
+          slot: placementMode.slot,
+          x: ag.x,
+          y: ag.y,
+          attachedToAgentId: ag.id,
+        };
+        setAbilities(activeStageIndex, [...activeStage.abilities, next]);
+      }
+      setPlacementMode(null);
+      setAbilityDirPreview(null);
+      setSelectedId(null);
+      return;
+    }
 
     if (placeMode === "origin_direction") {
       if (!placementMode.pendingOriginAttack) {
@@ -639,6 +805,30 @@ export function StratStageEditor({
           "rgb(34,211,238)"))
       : "rgb(34,211,238)";
 
+  const abilityPlacementAimPreview = useMemo(() => {
+    if (!activeStage || placementMode?.kind !== "ability") return false;
+    const b = agentBlueprintForSlot(
+      agentsCatalog,
+      placementMode.slug,
+      placementMode.slot,
+    );
+    if (!b) return false;
+    if (placementMode.pendingOriginAttack) return true;
+    if (
+      effectiveStratAttachToAgent(b) &&
+      effectiveStratPlacementMode(b) === "origin_direction"
+    ) {
+      return (
+        resolveStratAttachAgent(
+          activeStage,
+          placementMode.slug,
+          selectedId,
+        ) != null
+      );
+    }
+    return false;
+  }, [activeStage, placementMode, agentsCatalog, selectedId]);
+
   const overlay = activeStage ? (
     <g style={{ pointerEvents: "auto" }}>
       <rect
@@ -659,11 +849,22 @@ export function StratStageEditor({
           if (
             !placementMode ||
             placementMode.kind !== "ability" ||
-            !placementMode.pendingOriginAttack ||
+            !abilityPlacementAimPreview ||
             !svgRef.current
           ) {
             setAbilityDirPreview(null);
             return;
+          }
+          if (!placementMode.pendingOriginAttack) {
+            const ag = resolveStratAttachAgent(
+              activeStage,
+              placementMode.slug,
+              selectedId,
+            );
+            if (!ag) {
+              setAbilityDirPreview(null);
+              return;
+            }
           }
           const r = svgPointerToLogical(svgRef.current, e.clientX, e.clientY);
           setAbilityDirPreview(clampPointToViewBox(vb, r));
@@ -671,8 +872,7 @@ export function StratStageEditor({
         onPointerLeave={() => setAbilityDirPreview(null)}
         style={{
           cursor:
-            placementMode?.kind === "ability" &&
-            placementMode.pendingOriginAttack
+            placementMode?.kind === "ability" && abilityPlacementAimPreview
               ? "crosshair"
               : placementMode
                 ? "crosshair"
@@ -680,16 +880,50 @@ export function StratStageEditor({
         }}
       />
       {placementMode?.kind === "ability" &&
-      placementMode.pendingOriginAttack &&
-      abilityDirPreview ? (
+      abilityDirPreview &&
+      abilityPlacementAimPreview ? (
         <line
           x1={
-            stratStagePinForDisplay(vb, side, placementMode.pendingOriginAttack)
-              .x
+            placementMode.pendingOriginAttack
+              ? stratStagePinForDisplay(
+                  vb,
+                  side,
+                  placementMode.pendingOriginAttack,
+                ).x
+              : (() => {
+                  const ag = resolveStratAttachAgent(
+                    activeStage,
+                    placementMode.slug,
+                    selectedId,
+                  );
+                  return ag
+                    ? stratStagePinForDisplay(vb, side, {
+                        x: ag.x,
+                        y: ag.y,
+                      }).x
+                    : 0;
+                })()
           }
           y1={
-            stratStagePinForDisplay(vb, side, placementMode.pendingOriginAttack)
-              .y
+            placementMode.pendingOriginAttack
+              ? stratStagePinForDisplay(
+                  vb,
+                  side,
+                  placementMode.pendingOriginAttack,
+                ).y
+              : (() => {
+                  const ag = resolveStratAttachAgent(
+                    activeStage,
+                    placementMode.slug,
+                    selectedId,
+                  );
+                  return ag
+                    ? stratStagePinForDisplay(vb, side, {
+                        x: ag.x,
+                        y: ag.y,
+                      }).y
+                    : 0;
+                })()
           }
           x2={abilityDirPreview.x}
           y2={abilityDirPreview.y}
@@ -729,18 +963,46 @@ export function StratStageEditor({
                   context: visionLosContextMerged,
                 })
               : [pos, { x: sh.lx, y: sh.ly }, { x: sh.rx, y: sh.ry }];
-          const coneMidRange = Math.hypot(sh.hx - pos.x, sh.hy - pos.y) / 0.78;
-          const rayEnd =
-            visionLosContextMerged && inPlayable
-              ? computeVisionConeRayEnd({
-                  origin: pos,
-                  angleRad: (rot * Math.PI) / 180,
-                  context: visionLosContextMerged,
-                })
-              : {
-                  x: pos.x + Math.cos((rot * Math.PI) / 180) * coneMidRange,
-                  y: pos.y + Math.sin((rot * Math.PI) / 180) * coneMidRange,
-                };
+          const ray = stratAgentVisionConeRayInDisplay({
+            vb,
+            side,
+            vbWidth,
+            pinS,
+            agent,
+            width: w,
+            visionLosContext: visionLosContextMerged,
+          });
+          const { sNear, sFar } = stratAgentVisionConeHandleAlongBounds({
+            vb,
+            pos: ray.pos,
+            dir: ray.dir,
+            lenRay: ray.lenRay,
+            vbWidth,
+            pinS,
+          });
+          const isRotDrag =
+            drag?.kind === "agentVisionConeRotate" &&
+            drag.agentId === agent.id;
+          const remembered = lastVisionConeHandleAlongRef.current[agent.id];
+          const sDefault = Math.min(
+            sFar,
+            Math.max(sNear, Math.min(ray.lenRay * 0.065, sFar * 0.22)),
+          );
+          const sIdle =
+            remembered != null
+              ? Math.min(sFar, Math.max(sNear, remembered))
+              : sDefault;
+          const sAlong = isRotDrag ? drag.handleAlongDist : sIdle;
+          const hx = ray.pos.x + ray.dir.x * sAlong;
+          const hy = ray.pos.y + ray.dir.y * sAlong;
+          const lineStart = {
+            x: ray.pos.x + ray.dir.x * sNear,
+            y: ray.pos.y + ray.dir.y * sNear,
+          };
+          const lineEnd = {
+            x: ray.pos.x + ray.dir.x * sFar,
+            y: ray.pos.y + ray.dir.y * sFar,
+          };
           return (
             <g key={`vc-${agent.id}`}>
               <polygon
@@ -768,20 +1030,36 @@ export function StratStageEditor({
               {sel ? (
                 <>
                   <line
-                    x1={pos.x}
-                    y1={pos.y}
-                    x2={rayEnd.x}
-                    y2={rayEnd.y}
+                    x1={ray.pos.x}
+                    y1={ray.pos.y}
+                    x2={ray.rayEnd.x}
+                    y2={ray.rayEnd.y}
                     stroke={VISION_CONE_TOKEN_COLOR}
                     opacity={0.82}
                     strokeWidth={Math.max(vbWidth * 0.0018, 0.85) * pinS}
                     strokeDasharray="6 5"
                     pointerEvents="none"
                   />
+                  <line
+                    x1={lineStart.x}
+                    y1={lineStart.y}
+                    x2={lineEnd.x}
+                    y2={lineEnd.y}
+                    stroke="transparent"
+                    strokeWidth={Math.max(vbWidth * 0.028, 14) * pinS}
+                    strokeLinecap="round"
+                    style={{
+                      cursor: placementMode ? "default" : "grab",
+                      touchAction: "none",
+                    }}
+                    onPointerDown={(e) =>
+                      beginAgentVisionConeInteraction(e, agent, w)
+                    }
+                  />
                   <circle
-                    cx={sh.hx}
-                    cy={sh.hy}
-                    r={Math.max(vbWidth * 0.0088, 4.2) * pinS}
+                    cx={hx}
+                    cy={hy}
+                    r={Math.max(vbWidth * 0.0072, 3.6) * pinS}
                     fill={VISION_CONE_TOKEN_COLOR}
                     stroke="#faf5ff"
                     strokeWidth={Math.max(vbWidth * 0.0019, 1) * pinS}
@@ -789,17 +1067,9 @@ export function StratStageEditor({
                       cursor: placementMode ? "default" : "grab",
                       touchAction: "none",
                     }}
-                    onPointerDown={(e) => {
-                      e.stopPropagation();
-                      if (placementMode) return;
-                      setSelectedId(agent.id);
-                      focusMapSvg();
-                      setDrag({
-                        kind: "agentVisionConeRotate",
-                        agentId: agent.id,
-                        pointerId: e.pointerId,
-                      });
-                    }}
+                    onPointerDown={(e) =>
+                      beginAgentVisionConeInteraction(e, agent, w)
+                    }
                   />
                 </>
               ) : null}
@@ -811,7 +1081,12 @@ export function StratStageEditor({
           agentsCatalog.find((a) => a.slug === ab.agentSlug)?.theme_color ??
           "rgb(34,211,238)";
         const sel = selectedId === ab.id;
-        const pos = stratStagePinForDisplay(vb, side, { x: ab.x, y: ab.y });
+        const stPos = resolvedPlacedAbilityStoredPosition(
+          ab,
+          activeStage.agents,
+        );
+        const pos = stratStagePinForDisplay(vb, side, stPos);
+        const isAttached = Boolean(ab.attachedToAgentId);
         const bp = agentBlueprintForSlot(agentsCatalog, ab.agentSlug, ab.slot);
         const useTwoHandles =
           bp != null && effectiveStratPlacementMode(bp) === "origin_direction";
@@ -823,7 +1098,7 @@ export function StratStageEditor({
           bp.geometry.kind === "rectangle";
         const rotDist = stratAbilityRotationHandleDistance(vbWidth) * pinS;
         const rotStored = stratAbilityRotationHandleStored(
-          { x: ab.x, y: ab.y },
+          stPos,
           ab.rotationDeg ?? 0,
           rotDist,
         );
@@ -922,36 +1197,38 @@ export function StratStageEditor({
                     strokeDasharray="6 5"
                     pointerEvents="none"
                   />
-                  <circle
-                    cx={pos.x}
-                    cy={pos.y}
-                    r={Math.max(vbWidth * 0.01, 5) * pinS}
-                    fill={accentColor}
-                    stroke={sel ? "#faf5ff" : "rgb(15, 23, 42)"}
-                    strokeWidth={
-                      Math.max(vbWidth * 0.0024, 1) * (sel ? 2.2 : 1) * pinS
-                    }
-                    style={{
-                      cursor: placementMode ? "default" : "grab",
-                      touchAction: "none",
-                    }}
-                    onPointerDown={(e) => {
-                      e.stopPropagation();
-                      if (placementMode) return;
-                      setSelectedId(ab.id);
-                      focusMapSvg();
-                      const svg = svgRef.current;
-                      if (!svg) return;
-                      const o = svgPointerToLogical(svg, e.clientX, e.clientY);
-                      setDrag({
-                        kind: "abilityOrigin",
-                        id: ab.id,
-                        grabDx: o.x - pos.x,
-                        grabDy: o.y - pos.y,
-                        pointerId: e.pointerId,
-                      });
-                    }}
-                  />
+                  {!isAttached ? (
+                    <circle
+                      cx={pos.x}
+                      cy={pos.y}
+                      r={Math.max(vbWidth * 0.01, 5) * pinS}
+                      fill={accentColor}
+                      stroke={sel ? "#faf5ff" : "rgb(15, 23, 42)"}
+                      strokeWidth={
+                        Math.max(vbWidth * 0.0024, 1) * (sel ? 2.2 : 1) * pinS
+                      }
+                      style={{
+                        cursor: placementMode ? "default" : "grab",
+                        touchAction: "none",
+                      }}
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        if (placementMode) return;
+                        setSelectedId(ab.id);
+                        focusMapSvg();
+                        const svg = svgRef.current;
+                        if (!svg) return;
+                        const o = svgPointerToLogical(svg, e.clientX, e.clientY);
+                        setDrag({
+                          kind: "abilityOrigin",
+                          id: ab.id,
+                          grabDx: o.x - pos.x,
+                          grabDy: o.y - pos.y,
+                          pointerId: e.pointerId,
+                        });
+                      }}
+                    />
+                  ) : null}
                   <circle
                     cx={isRectOD && rectCenterPos ? rectCenterPos.x : rotPos.x}
                     cy={isRectOD && rectCenterPos ? rectCenterPos.y : rotPos.y}
@@ -991,6 +1268,7 @@ export function StratStageEditor({
               if (placementMode) return;
               setSelectedId(ab.id);
               focusMapSvg();
+              if (isAttached) return;
               const svg = svgRef.current;
               if (svg) {
                 const o = svgPointerToLogical(svg, e.clientX, e.clientY);
@@ -1003,7 +1281,10 @@ export function StratStageEditor({
                 });
               }
             }}
-            style={{ cursor: placementMode ? "default" : "grab" }}
+            style={{
+              cursor:
+                placementMode || isAttached ? "default" : "grab",
+            }}
           >
             {abilitySvg}
           </g>
@@ -1341,38 +1622,55 @@ export function StratStageEditor({
                     <span className="text-violet-200">Placement mode:</span>{" "}
                     {placementMode.kind === "agent" ? (
                       <>click the map to drop an agent token ({placementMode.slug}).</>
-                    ) : placementMode.pendingOriginAttack ? (
-                      <>
-                        Second click: <strong className="text-violet-200">face</strong>{" "}
-                        {placementMode.slot.toUpperCase()} for {placementMode.slug}{" "}
-                        (color-matched preview line).
-                      </>
-                    ) : (
-                      <>
-                        Click the map for{" "}
-                        {(() => {
-                          const b = agentBlueprintForSlot(
-                            agentsCatalog,
-                            placementMode.slug,
-                            placementMode.slot,
-                          );
-                          const m = b
-                            ? effectiveStratPlacementMode(b)
-                            : "center";
+                    ) : placementMode.kind === "ability" ? (
+                      (() => {
+                        const b = agentBlueprintForSlot(
+                          agentsCatalog,
+                          placementMode.slug,
+                          placementMode.slot,
+                        );
+                        if (b && effectiveStratAttachToAgent(b)) {
+                          const m = effectiveStratPlacementMode(b);
                           return m === "origin_direction" ? (
                             <>
-                              <strong className="text-cyan-200">origin</strong>, then
-                              again for direction
+                              One click:{" "}
+                              <strong className="text-cyan-200">aim</strong> from the
+                              agent token (preview line from the pin).
                             </>
                           ) : (
                             <>
-                              {placementMode.slot.toUpperCase()} ({placementMode.slug})
+                              One click on the map drops{" "}
+                              {placementMode.slot.toUpperCase()} on the agent token.
                             </>
                           );
-                        })()}
-                        .
-                      </>
-                    )}{" "}
+                        }
+                        if (placementMode.pendingOriginAttack) {
+                          return (
+                            <>
+                              Second click:{" "}
+                              <strong className="text-violet-200">face</strong>{" "}
+                              {placementMode.slot.toUpperCase()} for{" "}
+                              {placementMode.slug} (color-matched preview line).
+                            </>
+                          );
+                        }
+                        const m = b
+                          ? effectiveStratPlacementMode(b)
+                          : "center";
+                        return m === "origin_direction" ? (
+                          <>
+                            Click the map for{" "}
+                            <strong className="text-cyan-200">origin</strong>, then
+                            again for direction.
+                          </>
+                        ) : (
+                          <>
+                            Click the map for{" "}
+                            {placementMode.slot.toUpperCase()} ({placementMode.slug}).
+                          </>
+                        );
+                      })()
+                    ) : null}{" "}
                     <button
                       type="button"
                       className="text-violet-300 underline"
@@ -1390,7 +1688,7 @@ export function StratStageEditor({
                     thin). Drag pins to adjust; select a pin — the map grabs focus —
                     then Delete or Backspace removes it (Escape clears selection).{" "}
                     {
-                      "Ability chips follow each agent's coach blueprint when set."
+                      "Ability chips follow each agent's coach blueprint. Use \"Attach to agent token\" in coach for shapes like Paranoia that pivot on the agent."
                     }
                   </>
                 )}
@@ -1471,7 +1769,8 @@ export function StratStageEditor({
                 ) : (
                   <p className="mt-1.5 text-[10px] leading-snug text-violet-500/75">
                     Select an agent token on the map, then choose wide or thin. Drag
-                    the pink handle to aim; the cone moves with the agent.
+                    along the dashed look line or the pink handle to aim (handle slides
+                    on the line, clamped to the map); the cone moves with the agent.
                   </p>
                 )}
               </div>
@@ -1524,13 +1823,25 @@ export function StratStageEditor({
                             r.slug,
                             slot,
                           );
-                          const title = vm
-                            ? `${vm.displayName}\n\n${vm.description}`
-                            : `Place ${slot.toUpperCase()} for ${r.name}`;
+                          const bpChip = agentBlueprintForSlot(
+                            agentsCatalog,
+                            r.slug,
+                            slot,
+                          );
+                          const attachNeedsToken =
+                            bpChip != null &&
+                            effectiveStratAttachToAgent(bpChip) &&
+                            !agentPlacedOnStage;
+                          const title = attachNeedsToken
+                            ? `Place ${r.name} on the map first — this ability attaches to the agent token.`
+                            : vm
+                              ? `${vm.displayName}\n\n${vm.description}`
+                              : `Place ${slot.toUpperCase()} for ${r.name}`;
                           return (
                             <button
                               key={slot}
                               type="button"
+                              disabled={attachNeedsToken}
                               title={title}
                               onClick={() =>
                                 setPlacementMode((m) =>
@@ -1547,7 +1858,7 @@ export function StratStageEditor({
                                 placementMode.slot === slot
                                   ? "border-cyan-400 bg-cyan-950/50 text-white"
                                   : "border-violet-800/50 bg-slate-950/70 text-violet-200"
-                              }`}
+                              } disabled:cursor-not-allowed disabled:opacity-45`}
                             >
                               <span className="text-[11px] font-bold">
                                 {slot.toUpperCase()}

@@ -125,6 +125,12 @@ export interface AgentAbilityBlueprint {
    */
   stratPlacementMode?: StratPlacementMode;
   /**
+   * When true (and the shape supports it), the strat map pin follows the agent token:
+   * position stays synced; only rotation is edited on-map. Placement uses one click
+   * to aim when `origin_direction`, or drops at the agent for `center`.
+   */
+  stratAttachToAgent?: boolean;
+  /**
    * Point shapes only: show Valorant API ability icon on the strat map when a URL exists.
    * `false` = always use the colored dot. Default / omitted = show icon when available.
    */
