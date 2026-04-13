@@ -28,6 +28,12 @@ import {
 import type { GameMap } from "@/types/catalog";
 import { AbilityBlueprintMapPreview } from "@/components/coach/AbilityBlueprintMapPreview";
 import { BlueprintGeometryFields } from "@/components/coach/BlueprintGeometryFields";
+import { BlueprintPlacementPreview } from "@/components/coach/BlueprintPlacementPreview";
+import { BlueprintShapeHandles } from "@/components/coach/BlueprintShapeHandles";
+import {
+  clampBlueprintPoint,
+  snapBlueprintPoint,
+} from "@/lib/blueprint-canvas-snap";
 import { viewBoxRectFromMap } from "@/lib/strat-map-display";
 
 const VB = BLUEPRINT_CANVAS_SIZE;
@@ -74,13 +80,6 @@ function newId(): string {
   return `ab-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-function clamp(p: MapPoint): MapPoint {
-  return {
-    x: Math.min(VB, Math.max(0, p.x)),
-    y: Math.min(VB, Math.max(0, p.y)),
-  };
-}
-
 function buildGeometry(
   kind: AgentAbilityShapeKind,
   pts: MapPoint[],
@@ -88,7 +87,7 @@ function buildGeometry(
   if (pts.length === 0) return null;
   if (kind === "point" && pts[0]) {
     const p = pts[0]!;
-    return { kind: "point", ...clamp(p) };
+    return { kind: "point", ...clampBlueprintPoint(p) };
   }
   if (kind === "circle" && pts.length >= 2) {
     const c = pts[0]!;
@@ -121,10 +120,10 @@ function buildGeometry(
     };
   }
   if (kind === "polyline" && pts.length >= 2) {
-    return { kind: "polyline", points: pts.map(clamp) };
+    return { kind: "polyline", points: pts.map(clampBlueprintPoint) };
   }
   if (kind === "polygon" && pts.length >= 3) {
-    return { kind: "polygon", points: pts.map(clamp) };
+    return { kind: "polygon", points: pts.map(clampBlueprintPoint) };
   }
   if (kind === "rectangle" && pts.length >= 2) {
     const a = pts[0]!;
@@ -338,6 +337,38 @@ function pointsDoneCount(kind: AgentAbilityShapeKind): number {
   }
 }
 
+/** Short status line for the placement bar (rubber-band shows the rest). */
+function placementProgressLine(
+  kind: AgentAbilityShapeKind,
+  pointsLen: number,
+): string {
+  if (kind === "polyline" || kind === "polygon") {
+    if (pointsLen === 0) return "Path — click to start";
+    return `${pointsLen} point${pointsLen === 1 ? "" : "s"} — add more, or finish`;
+  }
+  const need = pointsDoneCount(kind);
+  const next = pointsLen + 1;
+  const labels: Record<
+    AgentAbilityShapeKind,
+    [string, string, string?]
+  > = {
+    point: ["Place utility land", "", ""],
+    circle: ["1/2 — smoke center", "2/2 — edge for radius", ""],
+    ray: ["1/2 — line start", "2/2 — line end", ""],
+    cone: ["1/3 — apex", "2/3 — left edge", "3/3 — right edge"],
+    polyline: ["", "", ""],
+    polygon: ["", "", ""],
+    rectangle: ["1/2 — one corner", "2/2 — opposite corner", ""],
+    arc: ["1/3 — arc center", "2/3 — radius & start", "3/3 — arc direction"],
+  };
+  const row = labels[kind];
+  const line =
+    pointsLen === 0 ? row[0] : pointsLen === 1 ? row[1] : row[2] ?? row[1];
+  if (!line) return `Step ${next}/${need}`;
+  if (line.includes("/")) return line;
+  return `${line} (${next}/${need})`;
+}
+
 export function AgentAbilityEditor({
   agent,
   maps,
@@ -385,6 +416,24 @@ export function AgentAbilityEditor({
     maps[0]?.id ?? null,
   );
 
+  /** 0 = snap off; otherwise grid units in blueprint space. */
+  const [snapStep, setSnapStep] = useState<number>(25);
+  const [cursorBp, setCursorBp] = useState<MapPoint | null>(null);
+
+  const applySnap = useCallback(
+    (p: MapPoint): MapPoint => {
+      const c = clampBlueprintPoint(p);
+      return snapStep > 0 ? snapBlueprintPoint(c, snapStep) : c;
+    },
+    [snapStep],
+  );
+
+  useEffect(() => {
+    if (!valorantUiBySlug) return;
+    const meta = abilityMetaForSlot(valorantUiBySlug, agent.slug, draftSlot);
+    setDraftName(meta?.displayName ?? "");
+  }, [draftSlot, valorantUiBySlug, agent.slug]);
+
   const previewMap = useMemo(() => {
     if (maps.length === 0) return null;
     const pick = previewMapId
@@ -400,6 +449,7 @@ export function AgentAbilityEditor({
 
   const startPlacement = useCallback(() => {
     const name = draftName.trim() || "Ability";
+    setCursorBp(null);
     setPlacement({
       slot: draftSlot,
       name,
@@ -412,7 +462,30 @@ export function AgentAbilityEditor({
 
   const cancelPlacement = useCallback(() => {
     setPlacement(null);
+    setCursorBp(null);
   }, []);
+
+  useEffect(() => {
+    if (!placement) return;
+    const polyPlacement =
+      placement.shapeKind === "polyline" || placement.shapeKind === "polygon";
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        cancelPlacement();
+        return;
+      }
+      if (e.key === "Backspace" && polyPlacement) {
+        e.preventDefault();
+        setPlacement((prev) => {
+          if (!prev || prev.points.length === 0) return prev;
+          return { ...prev, points: prev.points.slice(0, -1) };
+        });
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [placement, cancelPlacement]);
 
   const commitPlacement = useCallback(
     (pts: MapPoint[], forcePolyDone?: boolean) => {
@@ -442,6 +515,7 @@ export function AgentAbilityEditor({
       setAbilities((a) => [...a, next]);
       setSelectedId(next.id);
       setPlacement(null);
+      setCursorBp(null);
     },
     [placement],
   );
@@ -451,7 +525,7 @@ export function AgentAbilityEditor({
       if (!placement || !svgRef.current) return;
       if (e.button !== 0) return;
       const raw = clientToSvgPoint(svgRef.current, e.clientX, e.clientY);
-      const p = clamp({ x: raw.x, y: raw.y });
+      const p = applySnap({ x: raw.x, y: raw.y });
       const kind = placement.shapeKind;
       const nextPts = [...placement.points, p];
 
@@ -467,7 +541,7 @@ export function AgentAbilityEditor({
         setPlacement({ ...placement, points: nextPts });
       }
     },
-    [placement, commitPlacement],
+    [placement, commitPlacement, applySnap],
   );
 
   function removeAbility(id: string) {
@@ -604,12 +678,41 @@ export function AgentAbilityEditor({
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-violet-800/30 bg-slate-950/55 px-3 py-2 text-xs text-violet-200/90">
+            <span className="text-violet-400/90">
+              Snap to grid (easier to match in-game proportions by eye)
+            </span>
+            <select
+              value={snapStep}
+              onChange={(e) => setSnapStep(Number(e.target.value))}
+              disabled={!!placement}
+              className="input-field max-w-[11rem] py-1.5 text-xs"
+              aria-label="Blueprint snap grid"
+            >
+              <option value={0}>Off — freehand</option>
+              <option value={10}>10 units (fine)</option>
+              <option value={25}>25 units (balanced)</option>
+              <option value={50}>50 units (chunky)</option>
+            </select>
+          </div>
+          <p className="text-xs leading-relaxed text-violet-400/70">
+            After you save a shape, select it in the list and{" "}
+            <strong className="text-violet-200/85">drag the colored dots</strong> on the
+            canvas to resize and move — no need to type coordinates. While placing a new
+            shape, move the pointer to preview circles, lines, and wedges before you click.
+          </p>
           <div className="overflow-hidden rounded-xl border border-violet-500/25 bg-slate-950/80">
             <svg
               ref={svgRef}
               viewBox={VB_STR}
               className="h-auto w-full max-h-[min(70dvh,720px)] cursor-crosshair touch-none select-none"
               onClick={onSvgClick}
+              onPointerMove={(e) => {
+                if (!placement || !svgRef.current) return;
+                const raw = clientToSvgPoint(svgRef.current, e.clientX, e.clientY);
+                setCursorBp(applySnap({ x: raw.x, y: raw.y }));
+              }}
+              onPointerLeave={() => setCursorBp(null)}
               role="presentation"
             >
               <rect width={VB} height={VB} fill="rgb(15,23,42)" />
@@ -668,6 +771,11 @@ export function AgentAbilityEditor({
                   <AbilityShapePreview b={b} dimmed={selectedId !== b.id} />
                 </g>
               ))}
+              <BlueprintPlacementPreview
+                placement={placement}
+                cursorBp={cursorBp}
+                vb={VB}
+              />
               {placement &&
                 placement.points.map((p, i) => (
                   <circle
@@ -678,6 +786,7 @@ export function AgentAbilityEditor({
                     fill="rgb(250,250,250)"
                     stroke="rgb(167,139,250)"
                     strokeWidth={VB * 0.003}
+                    pointerEvents="none"
                   />
                 ))}
               {placement && placement.shapeKind === "polyline" && placement.points.length >= 2 ? (
@@ -702,18 +811,46 @@ export function AgentAbilityEditor({
                   pointerEvents="none"
                 />
               ) : null}
+              {selected && !placement ? (
+                <BlueprintShapeHandles
+                  blueprint={selected}
+                  vb={VB}
+                  svgRef={svgRef}
+                  snapStep={snapStep}
+                  onChange={updateSelectedGeometry}
+                />
+              ) : null}
             </svg>
           </div>
           {placement ? (
             <div className="flex flex-wrap items-center gap-3 rounded-lg border border-violet-800/40 bg-violet-950/25 px-3 py-2 text-sm text-violet-100/90">
-              <span>
-                Placing: <strong>{placement.name}</strong> ·{" "}
+              <span className="min-w-0 flex-1">
+                <strong>{placement.name}</strong> ·{" "}
                 {slotCompactLabel(valorantUiBySlug, agent.slug, placement.slot)} ·{" "}
-                {placement.shapeKind} — {placementHint(placement.shapeKind)}
+                {placement.shapeKind}
+                <span className="mt-1 block text-xs font-normal text-violet-300/85">
+                  {placementProgressLine(placement.shapeKind, placement.points.length)} ·{" "}
+                  {placementHint(placement.shapeKind)}
+                </span>
               </span>
               {(placement.shapeKind === "polyline" ||
                 placement.shapeKind === "polygon") && (
                 <>
+                  <button
+                    type="button"
+                    className="btn-secondary text-xs py-1"
+                    disabled={placement.points.length === 0}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPlacement((prev) =>
+                        prev && prev.points.length
+                          ? { ...prev, points: prev.points.slice(0, -1) }
+                          : prev,
+                      );
+                    }}
+                  >
+                    Undo point
+                  </button>
                   <button
                     type="button"
                     className="btn-secondary text-xs py-1"
@@ -751,7 +888,14 @@ export function AgentAbilityEditor({
             </div>
           ) : (
             <p className="text-xs text-violet-400/55">
-              Click the canvas after pressing “Start placement”. Select a saved shape in the list to highlight it.
+              Click the canvas after “Start placement”. Select a saved ability to show drag
+              handles. Keys:{" "}
+              <kbd className="rounded border border-violet-700/50 bg-slate-900 px-1">Esc</kbd>{" "}
+              cancel placement,{" "}
+              <kbd className="rounded border border-violet-700/50 bg-slate-900 px-1">
+                Backspace
+              </kbd>{" "}
+              removes last path point.
             </p>
           )}
         </div>
