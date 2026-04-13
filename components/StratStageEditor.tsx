@@ -35,7 +35,11 @@ import {
 } from "@/lib/strat-stage-pin-styles";
 import { agentBlueprintForSlot } from "@/lib/strat-ability-blueprint-lookup";
 import { StratAbilityBlueprintSvg } from "@/components/StratAbilityBlueprintSvg";
-import type { MapPoint, ViewBoxRect } from "@/lib/map-path";
+import {
+  clampPointToViewBox,
+  type MapPoint,
+  type ViewBoxRect,
+} from "@/lib/map-path";
 import {
   stratStagePinForDisplay,
   stratStagePinToStoredAttack,
@@ -61,13 +65,6 @@ function newItemId(): string {
     return crypto.randomUUID();
   }
   return `pin-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function clampToViewBox(vb: ViewBoxRect, p: MapPoint): MapPoint {
-  return {
-    x: Math.min(vb.minX + vb.width, Math.max(vb.minX, p.x)),
-    y: Math.min(vb.minY + vb.height, Math.max(vb.minY, p.y)),
-  };
 }
 
 function transitionAnimationName(t: StratStageTransition): string | null {
@@ -324,7 +321,7 @@ export function StratStageEditor({
       const svg = svgRef.current;
       if (!svg || !activeStage) return;
       const raw = svgPointerToLogical(svg, e.clientX, e.clientY);
-      const pDisplay = clampToViewBox(vb, {
+      const pDisplay = clampPointToViewBox(vb, {
         x: raw.x - drag.grabDx,
         y: raw.y - drag.grabDy,
       });
@@ -372,7 +369,7 @@ export function StratStageEditor({
     if (e.button !== 0) return;
     if (!placementMode || !svgRef.current || !activeStage) return;
     const raw = svgPointerToLogical(svgRef.current, e.clientX, e.clientY);
-    const pDisplay = clampToViewBox(vb, raw);
+    const pDisplay = clampPointToViewBox(vb, raw);
     const p = stratStagePinToStoredAttack(vb, side, pDisplay);
     if (placementMode.kind === "agent") {
       const next: StratPlacedAgent = {

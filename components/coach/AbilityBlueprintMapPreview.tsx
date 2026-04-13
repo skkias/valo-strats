@@ -1,12 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { GameMap } from "@/types/catalog";
 import type { AgentAbilityBlueprint } from "@/types/agent-ability";
 import { StratMapViewer } from "@/components/StratMapViewer";
 import { StratAbilityBlueprintSvg } from "@/components/StratAbilityBlueprintSvg";
 import { stratMapDisplayData } from "@/lib/strat-map-display";
 import type { StratSide } from "@/types/strat";
+import { normalizeEditorMeta } from "@/lib/map-editor-meta";
+import {
+  mapGeometryScaleFromEditorMeta,
+  rootPointToLogicalGeometry,
+} from "@/lib/map-geometry-scale";
+import { clientToSvgPoint } from "@/lib/svg-coords";
+import { clampPointToViewBox } from "@/lib/map-path";
 
 function round4(n: number): string {
   const r = Math.round(n * 10000) / 10000;
@@ -26,10 +33,21 @@ export function AbilityBlueprintMapPreview({
 }) {
   const [side, setSide] = useState<StratSide>("atk");
   const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null);
+  const [draggingAnchor, setDraggingAnchor] = useState(false);
+
+  const mapSvgRef = useRef<SVGSVGElement | null>(null);
 
   const { vb } = useMemo(
     () => stratMapDisplayData(gameMap, side),
     [gameMap, side],
+  );
+
+  const mapGeoScale = useMemo(
+    () =>
+      mapGeometryScaleFromEditorMeta(
+        normalizeEditorMeta(gameMap.editor_meta),
+      ),
+    [gameMap.editor_meta],
   );
 
   const defaultAnchor = useMemo(
@@ -54,15 +72,48 @@ export function AbilityBlueprintMapPreview({
     setAyStr(round4(pos.y));
   }, [pos.x, pos.y]);
 
+  const pointerToLogical = useCallback(
+    (clientX: number, clientY: number) => {
+      const svg = mapSvgRef.current;
+      if (!svg) return null;
+      const root = clientToSvgPoint(svg, clientX, clientY);
+      return rootPointToLogicalGeometry(root, vb, mapGeoScale);
+    },
+    [vb, mapGeoScale],
+  );
+
   function applyAnchorFromInputs() {
     const x = Number.parseFloat(axStr);
     const y = Number.parseFloat(ayStr);
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-    setAnchor({
-      x: Math.min(vb.minX + vb.width, Math.max(vb.minX, x)),
-      y: Math.min(vb.minY + vb.height, Math.max(vb.minY, y)),
-    });
+    setAnchor(clampPointToViewBox(vb, { x, y }));
   }
+
+  const onBlueprintPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (e.button !== 0 || !blueprint) return;
+      e.stopPropagation();
+      e.preventDefault();
+      setDraggingAnchor(true);
+      const pid = e.pointerId;
+      function onMove(ev: PointerEvent) {
+        if (ev.pointerId !== pid) return;
+        const logical = pointerToLogical(ev.clientX, ev.clientY);
+        if (logical) setAnchor(clampPointToViewBox(vb, logical));
+      }
+      function end(ev: PointerEvent) {
+        if (ev.pointerId !== pid) return;
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", end);
+        window.removeEventListener("pointercancel", end);
+        setDraggingAnchor(false);
+      }
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", end);
+      window.addEventListener("pointercancel", end);
+    },
+    [blueprint, pointerToLogical, vb],
+  );
 
   return (
     <div className="space-y-3">
@@ -89,6 +140,7 @@ export function AbilityBlueprintMapPreview({
       </div>
 
       <StratMapViewer
+        ref={mapSvgRef}
         gameMap={gameMap}
         side={side}
         showLayerToggles={false}
@@ -96,13 +148,21 @@ export function AbilityBlueprintMapPreview({
         embed
       >
         {blueprint ? (
-          <StratAbilityBlueprintSvg
-            blueprint={blueprint}
-            mapX={pos.x}
-            mapY={pos.y}
-            vbWidth={vb.width}
-            pointerEvents="none"
-          />
+          <g
+            onPointerDown={onBlueprintPointerDown}
+            style={{
+              cursor: draggingAnchor ? "grabbing" : "grab",
+              touchAction: "none",
+            }}
+          >
+            <StratAbilityBlueprintSvg
+              blueprint={blueprint}
+              mapX={pos.x}
+              mapY={pos.y}
+              vbWidth={vb.width}
+              pointerEvents="auto"
+            />
+          </g>
         ) : null}
       </StratMapViewer>
 
@@ -136,9 +196,10 @@ export function AbilityBlueprintMapPreview({
           />
         </label>
         <p className="col-span-2 text-[11px] leading-snug text-violet-500/75 sm:col-span-2">
-          Placement matches strat pins: blueprint center sits on this point. Pan/zoom the
-          map with the viewer controls; anchor is in SVG user space ({round4(vb.minX)}…
-          {round4(vb.minX + vb.width)} × {round4(vb.minY)}…{round4(vb.minY + vb.height)}).
+          <strong className="text-violet-300/85">Drag</strong> the blueprint on the map to
+          move the anchor (same coordinate space as strat ability pins). Pan/zoom with the
+          viewer; anchor is in logical map units ({round4(vb.minX)}…{round4(vb.minX + vb.width)}{" "}
+          × {round4(vb.minY)}…{round4(vb.minY + vb.height)}).
         </p>
       </div>
     </div>

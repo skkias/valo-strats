@@ -73,6 +73,14 @@ export type ViewBoxRect = {
   height: number;
 };
 
+/** Clamp a point to the viewBox rectangle (strat / map editor logical bounds). */
+export function clampPointToViewBox(vb: ViewBoxRect, p: MapPoint): MapPoint {
+  return {
+    x: Math.min(vb.minX + vb.width, Math.max(vb.minX, p.x)),
+    y: Math.min(vb.minY + vb.height, Math.max(vb.minY, p.y)),
+  };
+}
+
 /**
  * Reflect points across the horizontal midline of the viewBox (mirror top ↔ bottom).
  * Matches “same shape flipped over the x-axis” through the map center in viewBox space.
