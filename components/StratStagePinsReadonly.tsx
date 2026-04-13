@@ -11,7 +11,6 @@ import {
 } from "@/components/StratStageAgentTokens";
 import {
   abilitySlotLabel,
-  abilitySlotStyle,
 } from "@/lib/strat-stage-pin-styles";
 import { agentBlueprintForSlot } from "@/lib/strat-ability-blueprint-lookup";
 import { StratAbilityBlueprintSvg } from "@/components/StratAbilityBlueprintSvg";
@@ -82,6 +81,7 @@ export function StratStagePinsReadonly({
           slug,
           name: a.name,
           role: a.role,
+          themeColor: a.theme_color ?? null,
           portraitUrl:
             raw?.startsWith("https://") === true ? raw : null,
         };
@@ -91,6 +91,7 @@ export function StratStagePinsReadonly({
           slug: string;
           name: string;
           role: string;
+          themeColor: string | null;
           portraitUrl: string | null;
         } => x != null,
       );
@@ -148,7 +149,9 @@ export function StratStagePinsReadonly({
         );
       })}
       {stage.abilities.map((ab) => {
-        const st = abilitySlotStyle(ab.slot);
+        const agentTheme =
+          agentsCatalog.find((a) => a.slug === ab.agentSlug)?.theme_color ??
+          "rgb(34,211,238)";
         const pos = stratStagePinForDisplay(vb, side, { x: ab.x, y: ab.y });
         const bp = agentBlueprintForSlot(agentsCatalog, ab.agentSlug, ab.slot);
         const stratOv = bp ? stratAnchorOverrideForBlueprint(bp) : undefined;
@@ -180,8 +183,8 @@ export function StratStagePinsReadonly({
               <g transform={`translate(${pos.x},${pos.y})`}>
                 <circle
                   r={abilityR}
-                  fill={st.fill}
-                  stroke={st.stroke}
+                  fill={agentTheme}
+                  stroke={agentTheme}
                   strokeWidth={vbWidth * 0.0024 * pinS}
                 />
                 <text

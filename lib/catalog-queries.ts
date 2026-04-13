@@ -4,12 +4,13 @@ import { normalizeAgentAbilitiesBlueprint } from "@/lib/agent-abilities-normaliz
 import { normalizeMapTransform } from "@/lib/map-transform";
 import { normalizeEditorMeta } from "@/lib/map-editor-meta";
 import { normalizeExtraPaths } from "@/lib/map-extra-paths";
+import { normalizeAgentThemeColor } from "@/lib/agent-theme-color";
 
 export async function listAgents(): Promise<Agent[]> {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("agents")
-    .select("id, slug, name, role, sort_order, portrait_url, abilities_blueprint")
+    .select("id, slug, name, role, sort_order, portrait_url, theme_color, abilities_blueprint")
     .order("sort_order", { ascending: true });
   if (error) throw new Error(error.message);
   return (data ?? []).map((row) => {
@@ -17,6 +18,7 @@ export async function listAgents(): Promise<Agent[]> {
     const rawBp = r.abilities_blueprint ?? r.abilitiesBlueprint;
     return {
       ...(row as Agent),
+      theme_color: normalizeAgentThemeColor(r.theme_color),
       abilities_blueprint: normalizeAgentAbilitiesBlueprint(rawBp),
     };
   });
@@ -54,6 +56,7 @@ export async function getAgentBySlug(slug: string): Promise<Agent | null> {
   const rawBp = r.abilities_blueprint ?? r.abilitiesBlueprint;
   return {
     ...(data as Agent),
+    theme_color: normalizeAgentThemeColor(r.theme_color),
     abilities_blueprint: normalizeAgentAbilitiesBlueprint(rawBp),
   };
 }

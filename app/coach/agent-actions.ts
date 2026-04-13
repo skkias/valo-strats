@@ -5,6 +5,7 @@ import { assertCoachGate } from "@/lib/coach-gate-server";
 import { createServiceSupabaseClient } from "@/lib/supabase-service";
 import type { AgentAbilityBlueprint } from "@/types/agent-ability";
 import { normalizeAgentAbilitiesBlueprint } from "@/lib/agent-abilities-normalize";
+import { normalizeAgentThemeColor } from "@/lib/agent-theme-color";
 
 export async function saveAgentAbilitiesBlueprintAction(
   agentId: string,
@@ -15,8 +16,18 @@ export async function saveAgentAbilitiesBlueprintAction(
     if (!agentId?.trim()) {
       return { error: "Missing agent id." };
     }
-    const normalized = normalizeAgentAbilitiesBlueprint(blueprint);
     const supabase = createServiceSupabaseClient();
+    const { data: agentRow, error: agentErr } = await supabase
+      .from("agents")
+      .select("theme_color")
+      .eq("id", agentId)
+      .maybeSingle();
+    if (agentErr) return { error: agentErr.message };
+    const theme = normalizeAgentThemeColor(agentRow?.theme_color);
+    const normalized = normalizeAgentAbilitiesBlueprint(blueprint).map((b) => ({
+      ...b,
+      color: theme,
+    }));
     const { error } = await supabase
       .from("agents")
       .update({ abilities_blueprint: normalized })
@@ -65,6 +76,37 @@ export async function saveAgentPortraitUrlAction(
   } catch (e) {
     return {
       error: e instanceof Error ? e.message : "Failed to save portrait URL.",
+    };
+  }
+}
+
+export async function saveAgentThemeColorAction(
+  agentId: string,
+  themeColor: string,
+  agentSlug?: string,
+): Promise<{ error: string | null }> {
+  try {
+    await assertCoachGate();
+    if (!agentId?.trim()) {
+      return { error: "Missing agent id." };
+    }
+    const normalized = normalizeAgentThemeColor(themeColor);
+    const supabase = createServiceSupabaseClient();
+    const { error } = await supabase
+      .from("agents")
+      .update({ theme_color: normalized })
+      .eq("id", agentId);
+    if (error) return { error: error.message };
+    revalidatePath("/coach");
+    revalidatePath("/coach/agents");
+    if (agentSlug?.trim()) {
+      revalidatePath(`/coach/agents/${agentSlug.trim()}`);
+    }
+    revalidatePath("/");
+    return { error: null };
+  } catch (e) {
+    return {
+      error: e instanceof Error ? e.message : "Failed to save theme color.",
     };
   }
 }

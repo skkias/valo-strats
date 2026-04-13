@@ -1,11 +1,19 @@
 import type { StratPlacedAbility } from "@/types/strat";
+import { normalizeAgentThemeColor } from "@/lib/agent-theme-color";
 
 export function abbrevAgentName(name: string): string {
   const letters = name.replace(/[^a-zA-Z]/g, "");
   return (letters.slice(0, 2) || "??").toUpperCase();
 }
 
-export function roleAccent(role: string): { fill: string; stroke: string } {
+export function roleAccent(
+  role: string,
+  themeColor?: string | null,
+): { fill: string; stroke: string } {
+  if (themeColor) {
+    const c = normalizeAgentThemeColor(themeColor);
+    return { fill: `${c}E6`, stroke: c };
+  }
   const r = role.toLowerCase();
   if (r.includes("duelist"))
     return { fill: "rgba(251,113,133,0.95)", stroke: "rgba(255,255,255,0.92)" };

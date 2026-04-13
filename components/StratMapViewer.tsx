@@ -401,6 +401,7 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
   /** Zoom/pan window in SVG user units (editor-style; not persisted). */
   const [viewport, setViewport] = useState<ViewBoxRect | null>(null);
   const [rightPanning, setRightPanning] = useState(false);
+  const [layersModalOpen, setLayersModalOpen] = useState(false);
 
   const setSvgRef = useCallback(
     (node: SVGSVGElement | null) => {
@@ -439,6 +440,20 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
   useEffect(() => {
     setVis(normalizeStratStageLayerVisibility(initialVisibility));
   }, [initialVisibility, visibilityScopeKey]);
+
+  useEffect(() => {
+    if (showLayerToggles) return;
+    setLayersModalOpen(false);
+  }, [showLayerToggles]);
+
+  useEffect(() => {
+    if (!layersModalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLayersModalOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [layersModalOpen]);
 
   useEffect(() => {
     const el = svgRef.current;
@@ -599,22 +614,57 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
       }
     >
       {showLayerToggles ? (
-        <div className="flex flex-wrap gap-2">
-          {toggleRow("territoryOutline", "Playable outline")}
-          {toggleRow("labels", "Labels")}
-          {toggleRow("spawnAtk", "Spawns · Attack")}
-          {toggleRow("spawnDef", "Spawns · Defense")}
-          {toggleRow("floorLower", "Floor · Lower")}
-          {toggleRow("floorUpper", "Floor · Upper")}
-          {toggleRow("obstacle", "Obstacle emphasis")}
-          {toggleRow("elevation", "Walkable zones")}
-          {toggleRow("wall", "Walls")}
-          {toggleRow("plant_site", "Plant sites")}
-          {toggleRow("grade", "Grade")}
-          {toggleRow("breakable_doorway", "Breakable doors")}
-          {toggleRow("toggle_door", "Toggle doors")}
-          {toggleRow("rope", "Ropes / ziplines")}
-          {toggleRow("spawn_barrier", "Spawn barriers")}
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => setLayersModalOpen(true)}
+            className="rounded-md border border-violet-700/55 bg-slate-950/80 px-3 py-1.5 text-xs font-medium text-violet-100/90 hover:border-violet-500/60 hover:bg-violet-950/45"
+          >
+            Map filters
+          </button>
+          <p className="text-[11px] text-violet-400/70">
+            Layer controls open in a modal
+          </p>
+        </div>
+      ) : null}
+
+      {showLayerToggles && layersModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-950/75"
+            onClick={() => setLayersModalOpen(false)}
+            aria-label="Close map filter modal"
+          />
+          <div className="relative z-10 w-full max-w-3xl rounded-xl border border-violet-600/35 bg-slate-950 px-4 py-4 shadow-2xl shadow-violet-950/45">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-violet-100">Map filters</h3>
+              <button
+                type="button"
+                onClick={() => setLayersModalOpen(false)}
+                className="rounded-md border border-violet-700/50 px-2 py-1 text-xs text-violet-200 hover:bg-violet-950/45"
+              >
+                Close
+              </button>
+            </div>
+            <div className="flex max-h-[70dvh] flex-wrap gap-2 overflow-y-auto">
+              {toggleRow("territoryOutline", "Playable outline")}
+              {toggleRow("labels", "Labels")}
+              {toggleRow("spawnAtk", "Spawns · Attack")}
+              {toggleRow("spawnDef", "Spawns · Defense")}
+              {toggleRow("floorLower", "Floor · Lower")}
+              {toggleRow("floorUpper", "Floor · Upper")}
+              {toggleRow("obstacle", "Obstacle emphasis")}
+              {toggleRow("elevation", "Walkable zones")}
+              {toggleRow("wall", "Walls")}
+              {toggleRow("plant_site", "Plant sites")}
+              {toggleRow("grade", "Grade")}
+              {toggleRow("breakable_doorway", "Breakable doors")}
+              {toggleRow("toggle_door", "Toggle doors")}
+              {toggleRow("rope", "Ropes / ziplines")}
+              {toggleRow("spawn_barrier", "Spawn barriers")}
+            </div>
+          </div>
         </div>
       ) : null}
 

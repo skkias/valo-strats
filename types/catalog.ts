@@ -13,6 +13,8 @@ export interface Agent {
    * Set manually under Coach → Agents (not bundled with the app).
    */
   portrait_url?: string | null;
+  /** Agent-wide theme color used for tokens and ability visuals. */
+  theme_color?: string | null;
   /** Coach-drawn ability shapes (lineup-style); optional until migration applied. */
   abilities_blueprint?: AgentAbilityBlueprint[];
 }

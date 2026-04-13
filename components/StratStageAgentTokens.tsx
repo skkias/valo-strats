@@ -18,6 +18,7 @@ export type StratAgentTokenRosterEntry = {
   name: string;
   role: string;
   portraitUrl: string | null;
+  themeColor?: string | null;
 };
 
 export type StratAgentTokenTransition = {
@@ -126,7 +127,7 @@ export function StratStageAgentTokens({
       {agents.map((a) => {
         const meta = roster.find((r) => r.slug === a.agentSlug);
         const accent = meta
-          ? roleAccent(meta.role)
+          ? roleAccent(meta.role, meta.themeColor)
           : { fill: "#94a3b8", stroke: "#fff" };
         const abbr = meta
           ? abbrevAgentName(meta.name)
@@ -197,7 +198,7 @@ export function StratStageAgentTokens({
       {exitingAgents.map((a) => {
         const meta = roster.find((r) => r.slug === a.agentSlug);
         const accent = meta
-          ? roleAccent(meta.role)
+          ? roleAccent(meta.role, meta.themeColor)
           : { fill: "#94a3b8", stroke: "#fff" };
         const abbr = meta
           ? abbrevAgentName(meta.name)

@@ -13,6 +13,7 @@ import type {
 import {
   saveAgentAbilitiesBlueprintAction,
   saveAgentPortraitUrlAction,
+  saveAgentThemeColorAction,
 } from "@/app/coach/agent-actions";
 import type { MapPoint } from "@/lib/map-path";
 import { clientToSvgPoint } from "@/lib/svg-coords";
@@ -44,6 +45,7 @@ import {
 import type { StratPlacementMode } from "@/types/agent-ability";
 import { ABILITY_TEXTURE_OPTIONS, rgbaWithAlpha } from "@/lib/ability-textures";
 import { AbilityTextureDefs } from "@/components/ability/AbilityTextureDefs";
+import { normalizeAgentThemeColor } from "@/lib/agent-theme-color";
 
 const VB = BLUEPRINT_CANVAS_SIZE;
 const VB_STR = `0 0 ${VB} ${VB}`;
@@ -610,7 +612,15 @@ export function AgentAbilityEditor({
   maps: GameMap[];
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
-  const initial = agent.abilities_blueprint ?? [];
+  const themeColor = normalizeAgentThemeColor(agent.theme_color);
+  const initial = useMemo(
+    () =>
+      (agent.abilities_blueprint ?? []).map((b) => ({
+        ...b,
+        color: themeColor,
+      })),
+    [agent.abilities_blueprint, themeColor],
+  );
   const [abilities, setAbilities] = useState<AgentAbilityBlueprint[]>(initial);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [placement, setPlacement] = useState<Placement | null>(null);
@@ -618,10 +628,23 @@ export function AgentAbilityEditor({
   const [banner, setBanner] = useState<string | null>(null);
   const [portraitUrl, setPortraitUrl] = useState(agent.portrait_url ?? "");
   const [portraitSaving, setPortraitSaving] = useState(false);
+  const [themeColorDraft, setThemeColorDraft] = useState(themeColor);
+  const [themeSaving, setThemeSaving] = useState(false);
 
   useEffect(() => {
     setPortraitUrl(agent.portrait_url ?? "");
   }, [agent.id, agent.portrait_url]);
+
+  useEffect(() => {
+    setThemeColorDraft(themeColor);
+    setAbilities((list) => list.map((b) => ({ ...b, color: themeColor })));
+  }, [themeColor]);
+
+  useEffect(() => {
+    setAbilities(initial);
+    setSelectedId(initial[0]?.id ?? null);
+    setPlacement(null);
+  }, [agent.id, initial]);
 
   const [valorantUiBySlug, setValorantUiBySlug] = useState<
     Record<string, ValorantAbilityUiMeta[]> | null
@@ -644,7 +667,6 @@ export function AgentAbilityEditor({
   const [draftSlot, setDraftSlot] = useState<AgentAbilitySlot>("q");
   const [draftName, setDraftName] = useState("");
   const [draftShape, setDraftShape] = useState<AgentAbilityShapeKind>("circle");
-  const [draftColor, setDraftColor] = useState("#a78bfa");
   const [draftTexture, setDraftTexture] = useState<AbilityTextureId>("diag_fwd");
   const [draftTextureRadialFromOrigin, setDraftTextureRadialFromOrigin] =
     useState(false);
@@ -696,7 +718,7 @@ export function AgentAbilityEditor({
       slot: draftSlot,
       name,
       shapeKind: draftShape,
-      color: draftColor,
+      color: themeColor,
       textureId: draftTexture,
       textureRadialFromOrigin: draftTextureRadialFromOrigin,
       points: [],
@@ -706,7 +728,7 @@ export function AgentAbilityEditor({
     draftSlot,
     draftName,
     draftShape,
-    draftColor,
+    themeColor,
     draftTexture,
     draftTextureRadialFromOrigin,
   ]);
@@ -886,10 +908,36 @@ export function AgentAbilityEditor({
   async function onSave() {
     setSaving(true);
     setBanner(null);
-    const { error } = await saveAgentAbilitiesBlueprintAction(agent.id, abilities);
+    const theme = normalizeAgentThemeColor(themeColorDraft);
+    const themedAbilities = abilities.map((b) => ({ ...b, color: theme }));
+    const { error } = await saveAgentAbilitiesBlueprintAction(
+      agent.id,
+      themedAbilities,
+    );
     setSaving(false);
     if (error) setBanner(error);
-    else setBanner("Saved ability blueprints.");
+    else {
+      setAbilities(themedAbilities);
+      setBanner("Saved ability blueprints.");
+    }
+  }
+
+  async function onSaveThemeColor() {
+    setThemeSaving(true);
+    setBanner(null);
+    const normalized = normalizeAgentThemeColor(themeColorDraft);
+    const { error } = await saveAgentThemeColorAction(
+      agent.id,
+      normalized,
+      agent.slug,
+    );
+    setThemeSaving(false);
+    if (error) setBanner(error);
+    else {
+      setThemeColorDraft(normalized);
+      setAbilities((list) => list.map((b) => ({ ...b, color: normalized })));
+      setBanner("Saved agent theme color.");
+    }
   }
 
   async function onSavePortrait() {
@@ -933,6 +981,39 @@ export function AgentAbilityEditor({
         <h2 className="text-sm font-semibold text-fuchsia-100/95">
           Face card (portrait)
         </h2>
+        <div className="mt-3 rounded-md border border-violet-800/35 bg-slate-950/45 p-3">
+          <label className="label block" htmlFor="agent-theme-color">
+            Agent theme color
+          </label>
+          <div className="mt-1.5 flex items-center gap-2">
+            <input
+              id="agent-theme-color"
+              type="color"
+              value={normalizeAgentThemeColor(themeColorDraft)}
+              onChange={(e) => setThemeColorDraft(e.target.value)}
+              className="h-10 w-16 cursor-pointer rounded border border-violet-800/50 bg-slate-950"
+            />
+            <code className="rounded bg-slate-900 px-2 py-1 text-xs text-violet-200/90">
+              {normalizeAgentThemeColor(themeColorDraft)}
+            </code>
+            <button
+              type="button"
+              onClick={() => void onSaveThemeColor()}
+              disabled={themeSaving}
+              className="btn-secondary ml-auto whitespace-nowrap px-3 py-2 text-xs"
+            >
+              {themeSaving ? (
+                <Loader2 className="inline h-3.5 w-3.5 animate-spin" />
+              ) : (
+                "Save theme"
+              )}
+            </button>
+          </div>
+          <p className="mt-1.5 text-[11px] text-violet-400/75">
+            This color drives all blueprint/ability visuals for this agent and the
+            agent token border in strat view.
+          </p>
+        </div>
         <p className="mt-2 text-xs leading-relaxed text-violet-300/65">
           This app does not ship agent artwork. Add a public{" "}
           <strong className="text-violet-200/90">https://</strong> URL to a
@@ -1343,19 +1424,6 @@ export function AgentAbilityEditor({
                 </option>
               ))}
             </select>
-          </div>
-          <div className="space-y-2">
-            <label className="label" htmlFor="ab-color">
-              Color
-            </label>
-            <input
-              id="ab-color"
-              type="color"
-              value={draftColor}
-              onChange={(e) => setDraftColor(e.target.value)}
-              className="h-10 w-full cursor-pointer rounded border border-violet-800/50 bg-slate-950"
-              disabled={!!placement}
-            />
           </div>
           <div className="space-y-2">
             <label className="label" htmlFor="ab-texture">

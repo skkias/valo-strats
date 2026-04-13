@@ -49,7 +49,6 @@ import {
 } from "@/lib/strat-map-pin-scale";
 import {
   abilitySlotLabel,
-  abilitySlotStyle,
 } from "@/lib/strat-stage-pin-styles";
 import { agentBlueprintForSlot } from "@/lib/strat-ability-blueprint-lookup";
 import { StratAbilityBlueprintSvg } from "@/components/StratAbilityBlueprintSvg";
@@ -265,6 +264,7 @@ export function StratStageEditor({
           slug,
           name: a.name,
           role: a.role,
+          themeColor: a.theme_color ?? null,
           portraitUrl:
             raw?.startsWith("https://") === true ? raw : null,
           allowedAbilitySlots: allowedAbilitySlotsFromBlueprint(
@@ -277,6 +277,7 @@ export function StratStageEditor({
           slug: string;
           name: string;
           role: string;
+          themeColor: string | null;
           portraitUrl: string | null;
           allowedAbilitySlots: StratPlacedAbility["slot"][];
         } => x != null,
@@ -653,7 +654,9 @@ export function StratStageEditor({
           agentsCatalog,
           placementMode.slug,
           placementMode.slot,
-        )?.color ?? "rgb(34,211,238)")
+        )?.color ??
+        (agentsCatalog.find((a) => a.slug === placementMode.slug)?.theme_color ??
+          "rgb(34,211,238)"))
       : placementMode?.kind === "visionCone"
         ? VISION_CONE_TOKEN_COLOR
         : "rgb(34,211,238)";
@@ -822,7 +825,9 @@ export function StratStageEditor({
         );
       })}
       {activeStage.abilities.map((ab) => {
-        const st = abilitySlotStyle(ab.slot);
+        const agentTheme =
+          agentsCatalog.find((a) => a.slug === ab.agentSlug)?.theme_color ??
+          "rgb(34,211,238)";
         const sel = selectedId === ab.id;
         const pos = stratStagePinForDisplay(vb, side, { x: ab.x, y: ab.y });
         const bp = agentBlueprintForSlot(agentsCatalog, ab.agentSlug, ab.slot);
@@ -882,8 +887,8 @@ export function StratStageEditor({
           <g transform={`translate(${pos.x},${pos.y})`}>
             <circle
               r={abilityR}
-              fill={st.fill}
-              stroke={sel ? "#fae8ff" : st.stroke}
+              fill={agentTheme}
+              stroke={sel ? "#fae8ff" : agentTheme}
               strokeWidth={
                 vbWidth * 0.0024 * (sel ? 2.2 : 1) * pinS
               }
