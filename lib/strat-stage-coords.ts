@@ -4,7 +4,7 @@ import {
   type MapPoint,
   type ViewBoxRect,
 } from "@/lib/map-path";
-import { stratDisplayUsesPathDefOutline } from "@/lib/strat-side-display-geometry";
+import { stratMapViewerShowsMirroredOutline } from "@/lib/map-strat-side";
 import type { StratSide } from "@/types/strat";
 
 function stratStoredAttackPointToDisplay(
@@ -13,13 +13,13 @@ function stratStoredAttackPointToDisplay(
   side: StratSide,
   p: MapPoint,
 ): MapPoint {
-  if (!stratDisplayUsesPathDefOutline(map, side)) return p;
+  if (!stratMapViewerShowsMirroredOutline(map, side)) return p;
   return flipPointsOverHorizontalMidline(vb, [p])[0]!;
 }
 
 /**
- * Stage pins are stored in `path_atk` coordinates. When the viewer shows `path_def`, mirror
- * into that frame (same as `stratMapDisplayData`).
+ * Stage pins are stored in `path_atk` coordinates. Strat map viewer: mirror into `path_def`
+ * frame when {@link stratMapViewerShowsMirroredOutline} (same as `stratMapDisplayData`).
  */
 export function stratStagePinForDisplay(
   vb: ViewBoxRect,

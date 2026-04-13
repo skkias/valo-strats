@@ -17,7 +17,7 @@ import {
   type ViewBoxRect,
 } from "@/lib/map-path";
 import { normalizeEditorMeta } from "@/lib/map-editor-meta";
-import { stratDisplayUsesPathDefOutline } from "@/lib/strat-side-display-geometry";
+import { stratMapViewerShowsMirroredOutline } from "@/lib/map-strat-side";
 import { parseViewBox } from "@/lib/view-box";
 
 export function viewBoxRectFromMap(map: GameMap): ViewBoxRect {
@@ -26,8 +26,8 @@ export function viewBoxRectFromMap(map: GameMap): ViewBoxRect {
 }
 
 /**
- * Map extras are stored in `path_atk` space. When the strat outline is `path_def`, mirror
- * layers with the same horizontal midline transform used to build `path_def` on save.
+ * Map extras are stored in `path_atk` space. When {@link stratMapViewerShowsMirroredOutline}
+ * is true (see table there), apply the horizontal midline mirror — strat map viewer only.
  */
 export function stratMapDisplayData(
   map: GameMap,
@@ -43,7 +43,7 @@ export function stratMapDisplayData(
   const rect = vb;
   const extra = map.extra_paths ?? [];
 
-  if (!stratDisplayUsesPathDefOutline(map, side)) {
+  if (!stratMapViewerShowsMirroredOutline(map, side)) {
     return {
       vb,
       overlays: extra,
