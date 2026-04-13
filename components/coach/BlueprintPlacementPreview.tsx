@@ -35,10 +35,13 @@ export function BlueprintPlacementPreview({
   placement,
   cursorBp,
   vb,
+  /** Valorant API icon while hovering a point placement. */
+  pointPreviewIconUrl,
 }: {
   placement: Placement | null;
   cursorBp: MapPoint | null;
   vb: number;
+  pointPreviewIconUrl?: string | null;
 }) {
   if (!placement || !cursorBp) return null;
   const { shapeKind: kind, points: pts } = placement;
@@ -47,8 +50,26 @@ export function BlueprintPlacementPreview({
   const dash = "14 10";
 
   if (kind === "point") {
+    const icon =
+      typeof pointPreviewIconUrl === "string" &&
+      pointPreviewIconUrl.startsWith("http")
+        ? pointPreviewIconUrl
+        : null;
+    const sz = vb * 0.038;
+    const half = sz / 2;
     return (
-      <g pointerEvents="none" opacity={0.85}>
+      <g pointerEvents="none" opacity={0.88}>
+        {icon ? (
+          <image
+            href={icon}
+            x={c.x - half}
+            y={c.y - half}
+            width={sz}
+            height={sz}
+            preserveAspectRatio="xMidYMid meet"
+            opacity={0.92}
+          />
+        ) : null}
         <circle
           cx={c.x}
           cy={c.y}

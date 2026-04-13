@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Agent } from "@/types/catalog";
 import type { StratSide, StratStage } from "@/types/strat";
 import type { ViewBoxRect } from "@/lib/map-path";
@@ -14,6 +14,11 @@ import {
 } from "@/lib/strat-stage-pin-styles";
 import { agentBlueprintForSlot } from "@/lib/strat-ability-blueprint-lookup";
 import { StratAbilityBlueprintSvg } from "@/components/StratAbilityBlueprintSvg";
+import {
+  abilityMetaForSlot,
+  fetchValorantAbilityUiBySlug,
+  type ValorantAbilityUiMeta,
+} from "@/lib/valorant-api-abilities";
 
 export function StratStagePinsReadonly({
   vb,
@@ -61,6 +66,24 @@ export function StratStagePinsReadonly({
   const fontAgent = Math.max(10, vbWidth * 0.016);
   const fontAbility = Math.max(9, vbWidth * 0.013);
 
+  const [valorantAbilityUi, setValorantAbilityUi] = useState<
+    Record<string, ValorantAbilityUiMeta[]>
+  >({});
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchValorantAbilityUiBySlug()
+      .then((data) => {
+        if (!cancelled) setValorantAbilityUi(data);
+      })
+      .catch(() => {
+        if (!cancelled) setValorantAbilityUi({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <g style={{ pointerEvents: "none" }}>
       {stage.agents.map((a) => {
@@ -102,6 +125,15 @@ export function StratStagePinsReadonly({
                 vbWidth={vbWidth}
                 rotationDeg={ab.rotationDeg ?? 0}
                 pointerEvents="none"
+                abilityDisplayIconUrl={
+                  bp.shapeKind === "point"
+                    ? abilityMetaForSlot(
+                        valorantAbilityUi,
+                        ab.agentSlug,
+                        ab.slot,
+                      )?.displayIcon ?? null
+                    : null
+                }
               />
             ) : (
               <g transform={`translate(${pos.x},${pos.y})`}>

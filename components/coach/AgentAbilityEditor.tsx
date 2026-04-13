@@ -190,12 +190,83 @@ function arcPathD(g: Extract<AgentAbilityGeometry, { kind: "arc" }>): string {
   return `M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} ${sweepFlag} ${x2} ${y2}`;
 }
 
+/** Point blueprint in editor: Valorant API icon when available. */
+function PointBlueprintEditorPreview({
+  x,
+  y,
+  stroke,
+  displayIconUrl,
+  dimmed,
+}: {
+  x: number;
+  y: number;
+  stroke: string;
+  displayIconUrl?: string | null;
+  dimmed?: boolean;
+}) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const sw = VB * 0.004;
+  const op = dimmed ? 0.35 : 0.95;
+  const size = VB * 0.038;
+  const half = size / 2;
+  const showImg =
+    typeof displayIconUrl === "string" &&
+    displayIconUrl.startsWith("http") &&
+    !imgFailed;
+
+  return (
+    <g opacity={op}>
+      {showImg ? (
+        <>
+          <image
+            href={displayIconUrl}
+            x={x - half}
+            y={y - half}
+            width={size}
+            height={size}
+            preserveAspectRatio="xMidYMid meet"
+            onError={() => setImgFailed(true)}
+          />
+          <circle
+            cx={x}
+            cy={y}
+            r={half * 1.06}
+            fill="none"
+            stroke={stroke}
+            strokeWidth={sw * 0.9}
+          />
+          <circle
+            cx={x}
+            cy={y}
+            r={half * 1.06}
+            fill="none"
+            stroke="#fff"
+            strokeWidth={sw * 0.45}
+          />
+        </>
+      ) : (
+        <circle
+          cx={x}
+          cy={y}
+          r={VB * 0.018}
+          fill={stroke}
+          stroke="#fff"
+          strokeWidth={sw}
+        />
+      )}
+    </g>
+  );
+}
+
 function AbilityShapePreview({
   b,
   dimmed,
+  displayIconUrl,
 }: {
   b: AgentAbilityBlueprint;
   dimmed?: boolean;
+  /** Valorant API `displayIcon` for point shapes. */
+  displayIconUrl?: string | null;
 }) {
   const g = b.geometry;
   const stroke = b.color;
@@ -206,9 +277,13 @@ function AbilityShapePreview({
   switch (g.kind) {
     case "point":
       return (
-        <g opacity={op}>
-          <circle cx={g.x} cy={g.y} r={VB * 0.018} fill={stroke} stroke="#fff" strokeWidth={sw} />
-        </g>
+        <PointBlueprintEditorPreview
+          x={g.x}
+          y={g.y}
+          stroke={stroke}
+          displayIconUrl={displayIconUrl}
+          dimmed={dimmed}
+        />
       );
     case "circle":
       return (
@@ -849,7 +924,18 @@ export function AgentAbilityEditor({
                     e.stopPropagation();
                   }}
                 >
-                  <AbilityShapePreview b={selected} />
+                  <AbilityShapePreview
+                    b={selected}
+                    displayIconUrl={
+                      selected.shapeKind === "point"
+                        ? abilityMetaForSlot(
+                            valorantUiBySlug ?? {},
+                            agent.slug,
+                            selected.slot,
+                          )?.displayIcon ?? null
+                        : null
+                    }
+                  />
                   {(() => {
                     const { x, y } = blueprintStratAnchor(selected);
                     const w = VB * 0.024;
@@ -888,6 +974,15 @@ export function AgentAbilityEditor({
                 placement={placement}
                 cursorBp={cursorBp}
                 vb={VB}
+                pointPreviewIconUrl={
+                  placement?.shapeKind === "point"
+                    ? abilityMetaForSlot(
+                        valorantUiBySlug ?? {},
+                        agent.slug,
+                        placement.slot,
+                      )?.displayIcon ?? null
+                    : null
+                }
               />
               {placement &&
                 placement.points.map((p, i) => (
@@ -1319,6 +1414,15 @@ export function AgentAbilityEditor({
                 <AbilityBlueprintMapPreview
                   gameMap={previewMap}
                   blueprint={selected}
+                  abilityDisplayIconUrl={
+                    selected?.shapeKind === "point"
+                      ? abilityMetaForSlot(
+                          valorantUiBySlug ?? {},
+                          agent.slug,
+                          selected.slot,
+                        )?.displayIcon ?? null
+                      : null
+                  }
                 />
               </div>
             ) : null}

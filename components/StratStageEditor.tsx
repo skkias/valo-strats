@@ -590,6 +590,15 @@ export function StratStageEditor({
                 vbWidth={vbWidth}
                 rotationDeg={ab.rotationDeg ?? 0}
                 selected={sel}
+                abilityDisplayIconUrl={
+                  bp.shapeKind === "point"
+                    ? abilityMetaForSlot(
+                        valorantAbilityUi,
+                        ab.agentSlug,
+                        ab.slot,
+                      )?.displayIcon ?? null
+                    : null
+                }
               />
             ) : (
               <g transform={`translate(${pos.x},${pos.y})`}>

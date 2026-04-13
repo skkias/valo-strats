@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import type { AgentAbilityBlueprint, AgentAbilityGeometry } from "@/types/agent-ability";
 import { blueprintStratAnchor } from "@/lib/strat-blueprint-anchor";
 import {
@@ -9,6 +9,9 @@ import {
 } from "@/lib/agent-ability-blueprint-scale";
 
 const BP = BLUEPRINT_CANVAS_SIZE;
+
+/** Thinner strokes on the strat map (uniform scale for all blueprint linework). */
+const MAP_BLUEPRINT_STROKE_SCALE = 0.5;
 
 function arcPathD(g: Extract<AgentAbilityGeometry, { kind: "arc" }>): string {
   const rad = (d: number) => (d * Math.PI) / 180;
@@ -20,6 +23,84 @@ function arcPathD(g: Extract<AgentAbilityGeometry, { kind: "arc" }>): string {
   const largeArc = Math.abs(sweepDeg) > 180 ? 1 : 0;
   const sweepFlag = sweepDeg >= 0 ? 1 : 0;
   return `M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} ${sweepFlag} ${x2} ${y2}`;
+}
+
+/** Point-only: Valorant API ability icon (`displayIcon`), scaled into blueprint space. */
+function PointBlueprintMark({
+  x,
+  y,
+  accentStroke,
+  displayIconUrl,
+  selected,
+  swMap,
+  op,
+  pointerEvents,
+}: {
+  x: number;
+  y: number;
+  accentStroke: string;
+  displayIconUrl: string | null | undefined;
+  selected: boolean;
+  swMap: number;
+  op: number;
+  pointerEvents: "none" | "auto";
+}) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const size = BP * 0.038;
+  const half = size / 2;
+  const showImg =
+    typeof displayIconUrl === "string" &&
+    displayIconUrl.startsWith("http") &&
+    !imgFailed;
+
+  return (
+    <g opacity={op} style={{ pointerEvents }}>
+      {showImg ? (
+        <>
+          <image
+            href={displayIconUrl}
+            x={x - half}
+            y={y - half}
+            width={size}
+            height={size}
+            preserveAspectRatio="xMidYMid meet"
+            onError={() => setImgFailed(true)}
+          />
+          <circle
+            cx={x}
+            cy={y}
+            r={half * 1.06}
+            fill="none"
+            stroke={accentStroke}
+            vectorEffect="non-scaling-stroke"
+            strokeWidth={swMap * 0.85}
+            style={{ pointerEvents } as CSSProperties}
+          />
+          <circle
+            cx={x}
+            cy={y}
+            r={half * 1.06}
+            fill="none"
+            stroke={selected ? "#fae8ff" : "#fff"}
+            vectorEffect="non-scaling-stroke"
+            strokeWidth={swMap * (selected ? 1.35 : 0.55)}
+            style={{ pointerEvents } as CSSProperties}
+          />
+        </>
+      ) : (
+        <circle
+          cx={x}
+          cy={y}
+          r={BP * 0.018}
+          fill={accentStroke}
+          stroke={selected ? "#fae8ff" : "#fff"}
+          vectorEffect="non-scaling-stroke"
+          strokeWidth={swMap * (selected ? 1.4 : 1.1)}
+          style={{ pointerEvents } as CSSProperties}
+        />
+      )}
+    </g>
+  );
 }
 
 /**
@@ -36,6 +117,8 @@ export function StratAbilityBlueprintSvg({
   rotationDeg = 0,
   selected,
   pointerEvents = "auto",
+  /** Valorant API `displayIcon` URL for point shapes — shows ability art instead of a dot. */
+  abilityDisplayIconUrl,
 }: {
   blueprint: AgentAbilityBlueprint;
   mapX: number;
@@ -45,13 +128,17 @@ export function StratAbilityBlueprintSvg({
   rotationDeg?: number;
   selected?: boolean;
   pointerEvents?: "none" | "auto";
+  abilityDisplayIconUrl?: string | null;
 }) {
   const g = blueprint.geometry;
   const stroke = blueprint.color;
   const fill = `${blueprint.color}44`;
   const anchor = blueprintStratAnchor(blueprint);
   const scale = stratBlueprintUnitsToMapScale(vbWidth);
-  const swMap = Math.max(vbWidth * 0.0016, 1.25) * (selected ? 1.35 : 1);
+  const swMap =
+    Math.max(vbWidth * 0.0016, 1.25) *
+    (selected ? 1.35 : 1) *
+    MAP_BLUEPRINT_STROKE_SCALE;
   const op = selected ? 1 : 0.92;
   const transform = `translate(${mapX},${mapY}) rotate(${rotationDeg}) scale(${scale}) translate(${-anchor.x},${-anchor.y})`;
 
@@ -66,17 +153,16 @@ export function StratAbilityBlueprintSvg({
   switch (g.kind) {
     case "point":
       inner = (
-        <g opacity={op} style={{ pointerEvents }}>
-          <circle
-            cx={g.x}
-            cy={g.y}
-            r={BP * 0.018}
-            fill={stroke}
-            stroke={selected ? "#fae8ff" : "#fff"}
-            {...commonStroke}
-            strokeWidth={swMap * (selected ? 1.4 : 1.1)}
-          />
-        </g>
+        <PointBlueprintMark
+          x={g.x}
+          y={g.y}
+          accentStroke={stroke}
+          displayIconUrl={abilityDisplayIconUrl}
+          selected={!!selected}
+          swMap={swMap}
+          op={op}
+          pointerEvents={pointerEvents}
+        />
       );
       break;
     case "circle":
@@ -199,7 +285,7 @@ export function StratAbilityBlueprintSvg({
             y2={m.by}
             stroke={stroke}
             strokeLinecap="round"
-            strokeDasharray={`${vbWidth * 0.014} ${vbWidth * 0.01}`}
+            strokeDasharray={`${vbWidth * 0.014 * MAP_BLUEPRINT_STROKE_SCALE} ${vbWidth * 0.01 * MAP_BLUEPRINT_STROKE_SCALE}`}
             {...commonStroke}
             strokeWidth={swMap * 1.65}
           />

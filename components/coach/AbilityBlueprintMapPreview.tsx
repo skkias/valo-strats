@@ -27,9 +27,12 @@ function round4(n: number): string {
 export function AbilityBlueprintMapPreview({
   gameMap,
   blueprint,
+  /** Valorant API ability icon for point blueprints (see `abilityMetaForSlot`). */
+  abilityDisplayIconUrl,
 }: {
   gameMap: GameMap;
   blueprint: AgentAbilityBlueprint | null;
+  abilityDisplayIconUrl?: string | null;
 }) {
   const [side, setSide] = useState<StratSide>("atk");
   const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null);
@@ -194,6 +197,7 @@ export function AbilityBlueprintMapPreview({
               vbWidth={vb.width}
               rotationDeg={previewRotationDeg}
               pointerEvents="auto"
+              abilityDisplayIconUrl={abilityDisplayIconUrl ?? null}
             />
           </g>
         ) : null}
