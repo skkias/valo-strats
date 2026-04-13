@@ -133,4 +133,15 @@ export interface AgentAbilityBlueprint {
    * Point shapes only: multiplies the on-map icon size in blueprint space (default `1`).
    */
   pointIconScale?: number;
+  /**
+   * When true, this blueprint’s on-map geometry participates in vision-cone LOS
+   * (token cones and blueprint vision wedges).
+   */
+  blocksVision?: boolean;
+  /**
+   * For enclosed shapes (circle, polygon, rectangle, arc wedge, cone) when `blocksVision`:
+   * - `filled`: interior blocks LOS and invalidates vision origins inside the zone.
+   * - `hollow`: only the boundary blocks; interior is see-through (e.g. smoke shell).
+   */
+  visionObstruction?: "filled" | "hollow";
 }

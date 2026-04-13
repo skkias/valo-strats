@@ -14,11 +14,9 @@ import type { Agent, GameMap } from "@/types/catalog";
 import type {
   StratPlacedAbility,
   StratPlacedAgent,
-  StratPlacedVisionCone,
   StratSide,
   StratStage,
   StratStageTransition,
-  StratVisionConeWidth,
 } from "@/types/strat";
 import { StratMapViewer } from "@/components/StratMapViewer";
 import { stratMapDisplayData } from "@/lib/strat-map-display";
@@ -71,12 +69,19 @@ import {
   rectangleStratPivotBlueprint,
   stratAnchorOverrideForBlueprint,
 } from "@/lib/strat-blueprint-map-point";
+import { appendPlacedAbilitiesVisionBlockers } from "@/lib/ability-vision-blockers";
 import {
   buildVisionLosContext,
   computeVisionConeLosPolygon,
   computeVisionConeRayEnd,
   isVisionOriginInPlayable,
+  type VisionLosContext,
 } from "@/lib/vision-cone-los";
+import {
+  catalogDefaultDoorOpen,
+  effectiveDoorIsOpen,
+} from "@/lib/strat-stage-door-states";
+import { stratAgentVisionConeDisplayHints } from "@/lib/strat-agent-vision-cone";
 
 type PlacementMode =
   | null
@@ -86,11 +91,6 @@ type PlacementMode =
       slug: string;
       slot: StratPlacedAbility["slot"];
       /** First click stored (attack coords) when using origin + direction placement. */
-      pendingOriginAttack?: { x: number; y: number };
-    }
-  | {
-      kind: "visionCone";
-      width: StratVisionConeWidth;
       pendingOriginAttack?: { x: number; y: number };
     };
 
@@ -122,22 +122,8 @@ type DragState =
       pointerId: number;
     }
   | {
-      kind: "visionCone";
-      id: string;
-      grabDx: number;
-      grabDy: number;
-      pointerId: number;
-    }
-  | {
-      kind: "visionConeOrigin";
-      id: string;
-      grabDx: number;
-      grabDy: number;
-      pointerId: number;
-    }
-  | {
-      kind: "visionConeRotate";
-      id: string;
+      kind: "agentVisionConeRotate";
+      agentId: string;
       pointerId: number;
     }
   | null;
@@ -157,28 +143,6 @@ const TRANSITION_OPTIONS: { value: StratStageTransition; label: string }[] = [
 ];
 
 const VISION_CONE_TOKEN_COLOR = "rgb(244, 114, 182)";
-
-function visionConeDisplayShape(
-  origin: { x: number; y: number },
-  vbWidth: number,
-  width: StratVisionConeWidth,
-  rotationDeg: number,
-  scale = 1,
-) {
-  const len = vbWidth * (width === "wide" ? 0.13 : 0.16) * scale;
-  const halfDeg = width === "wide" ? 52 : 28;
-  const base = (rotationDeg * Math.PI) / 180;
-  const left = base + (halfDeg * Math.PI) / 180;
-  const right = base - (halfDeg * Math.PI) / 180;
-  const lx = origin.x + Math.cos(left) * len;
-  const ly = origin.y + Math.sin(left) * len;
-  const rx = origin.x + Math.cos(right) * len;
-  const ry = origin.y + Math.sin(right) * len;
-  const handleDist = len * 0.78;
-  const hx = origin.x + Math.cos(base) * handleDist;
-  const hy = origin.y + Math.sin(base) * handleDist;
-  return { lx, ly, rx, ry, hx, hy };
-}
 
 export function StratStageEditor({
   gameMap,
@@ -230,13 +194,28 @@ export function StratStageEditor({
     setSelectedId(null);
   }, [activeStageIndex]);
 
-  const { vb, vbWidth } = useMemo(() => {
+  const { vb, vbWidth, mapOverlays } = useMemo(() => {
     const d = stratMapDisplayData(gameMap, side);
-    return { vb: d.vb, vbWidth: d.vb.width };
+    return { vb: d.vb, vbWidth: d.vb.width, mapOverlays: d.overlays };
   }, [gameMap, side]);
-  const visionLosContext = useMemo(
-    () => buildVisionLosContext(gameMap, side),
-    [gameMap, side],
+
+  const mapDoorOverlays = useMemo(
+    () =>
+      mapOverlays.filter(
+        (sh) =>
+          sh.kind === "toggle_door" || sh.kind === "breakable_doorway",
+      ),
+    [mapOverlays],
+  );
+
+  const visionLosBase = useMemo(
+    () =>
+      buildVisionLosContext(
+        gameMap,
+        side,
+        stages[activeStageIndex]?.doorOpenByOverlayId,
+      ),
+    [gameMap, side, stages, activeStageIndex],
   );
 
   const mapGeoScale = useMemo(
@@ -323,6 +302,54 @@ export function StratStageEditor({
   const activeStage: StratStage | undefined = stages[activeStageIndex];
   const safeIndex = Math.min(activeStageIndex, Math.max(0, stages.length - 1));
 
+  const visionLosContextMerged = useMemo(() => {
+    if (!visionLosBase) return null;
+    return appendPlacedAbilitiesVisionBlockers(visionLosBase, {
+      placedAbilities: activeStage?.abilities ?? [],
+      agentsCatalog,
+      vb,
+      side,
+      vbWidth,
+      mapPinScale,
+    });
+  }, [
+    visionLosBase,
+    activeStage?.abilities,
+    agentsCatalog,
+    vb,
+    side,
+    vbWidth,
+    mapPinScale,
+  ]);
+  const visionLosContextByExcludeId = useMemo(() => {
+    const m = new Map<string, VisionLosContext>();
+    if (!visionLosBase) return m;
+    const placed = activeStage?.abilities ?? [];
+    for (const ab of placed) {
+      m.set(
+        ab.id,
+        appendPlacedAbilitiesVisionBlockers(visionLosBase, {
+          placedAbilities: placed,
+          agentsCatalog,
+          vb,
+          side,
+          vbWidth,
+          mapPinScale,
+          excludePlacedAbilityId: ab.id,
+        }),
+      );
+    }
+    return m;
+  }, [
+    visionLosBase,
+    activeStage?.abilities,
+    agentsCatalog,
+    vb,
+    side,
+    vbWidth,
+    mapPinScale,
+  ]);
+
   useEffect(() => {
     if (safeIndex !== activeStageIndex) {
       setActiveStageIndex(safeIndex);
@@ -348,13 +375,6 @@ export function StratStageEditor({
   const setAbilities = useCallback(
     (index: number, abilities: StratPlacedAbility[]) => {
       patchStage(index, { abilities });
-    },
-    [patchStage],
-  );
-
-  const setVisionCones = useCallback(
-    (index: number, visionCones: StratPlacedVisionCone[]) => {
-      patchStage(index, { visionCones });
     },
     [patchStage],
   );
@@ -427,10 +447,6 @@ export function StratStageEditor({
         activeStageIndex,
         activeStage.abilities.filter((a) => a.id !== id),
       );
-      setVisionCones(
-        activeStageIndex,
-        activeStage.visionCones.filter((v) => v.id !== id),
-      );
       setSelectedId(null);
     };
     window.addEventListener("keydown", onKey);
@@ -441,7 +457,6 @@ export function StratStageEditor({
     activeStageIndex,
     setAgents,
     setAbilities,
-    setVisionCones,
   ]);
 
   useEffect(() => {
@@ -451,7 +466,8 @@ export function StratStageEditor({
       if (!svg || !activeStage) return;
       const raw = svgPointerToLogical(svg, e.clientX, e.clientY);
       const p =
-        drag.kind === "abilityRotate" || drag.kind === "visionConeRotate"
+        drag.kind === "abilityRotate" ||
+        drag.kind === "agentVisionConeRotate"
           ? stratStagePinToStoredAttack(
               vb,
               side,
@@ -496,28 +512,14 @@ export function StratStageEditor({
             return { ...a, rotationDeg };
           }),
         );
-      } else if (drag.kind === "visionCone") {
-        setVisionCones(
+      } else if (drag.kind === "agentVisionConeRotate") {
+        setAgents(
           activeStageIndex,
-          activeStage.visionCones.map((v) =>
-            v.id === drag.id ? { ...v, x: p.x, y: p.y } : v,
-          ),
-        );
-      } else if (drag.kind === "visionConeOrigin") {
-        setVisionCones(
-          activeStageIndex,
-          activeStage.visionCones.map((v) =>
-            v.id === drag.id ? { ...v, x: p.x, y: p.y } : v,
-          ),
-        );
-      } else if (drag.kind === "visionConeRotate") {
-        setVisionCones(
-          activeStageIndex,
-          activeStage.visionCones.map((v) => {
-            if (v.id !== drag.id) return v;
+          activeStage.agents.map((a) => {
+            if (a.id !== drag.agentId || !a.visionConeWidth) return a;
             const rotationDeg =
-              (Math.atan2(p.y - v.y, p.x - v.x) * 180) / Math.PI;
-            return { ...v, rotationDeg };
+              (Math.atan2(p.y - a.y, p.x - a.x) * 180) / Math.PI;
+            return { ...a, visionConeRotationDeg: rotationDeg };
           }),
         );
       }
@@ -542,7 +544,6 @@ export function StratStageEditor({
     side,
     setAgents,
     setAbilities,
-    setVisionCones,
     svgPointerToLogical,
   ]);
 
@@ -566,32 +567,6 @@ export function StratStageEditor({
         y: p.y,
       };
       setAgents(activeStageIndex, [...activeStage.agents, next]);
-      setPlacementMode(null);
-      setAbilityDirPreview(null);
-      setSelectedId(null);
-      return;
-    }
-
-    if (placementMode.kind === "visionCone") {
-      if (!placementMode.pendingOriginAttack) {
-        setPlacementMode({
-          kind: "visionCone",
-          width: placementMode.width,
-          pendingOriginAttack: { x: p.x, y: p.y },
-        });
-        setSelectedId(null);
-        return;
-      }
-      const o = placementMode.pendingOriginAttack;
-      const rotationDeg = (Math.atan2(p.y - o.y, p.x - o.x) * 180) / Math.PI;
-      const next: StratPlacedVisionCone = {
-        id: newItemId(),
-        x: o.x,
-        y: o.y,
-        rotationDeg,
-        width: placementMode.width,
-      };
-      setVisionCones(activeStageIndex, [...activeStage.visionCones, next]);
       setPlacementMode(null);
       setAbilityDirPreview(null);
       setSelectedId(null);
@@ -662,9 +637,7 @@ export function StratStageEditor({
         )?.color ??
         (agentsCatalog.find((a) => a.slug === placementMode.slug)?.theme_color ??
           "rgb(34,211,238)"))
-      : placementMode?.kind === "visionCone"
-        ? VISION_CONE_TOKEN_COLOR
-        : "rgb(34,211,238)";
+      : "rgb(34,211,238)";
 
   const overlay = activeStage ? (
     <g style={{ pointerEvents: "auto" }}>
@@ -685,8 +658,7 @@ export function StratStageEditor({
         onPointerMove={(e) => {
           if (
             !placementMode ||
-            (placementMode.kind !== "ability" &&
-              placementMode.kind !== "visionCone") ||
+            placementMode.kind !== "ability" ||
             !placementMode.pendingOriginAttack ||
             !svgRef.current
           ) {
@@ -699,8 +671,7 @@ export function StratStageEditor({
         onPointerLeave={() => setAbilityDirPreview(null)}
         style={{
           cursor:
-            (placementMode?.kind === "ability" ||
-              placementMode?.kind === "visionCone") &&
+            placementMode?.kind === "ability" &&
             placementMode.pendingOriginAttack
               ? "crosshair"
               : placementMode
@@ -708,8 +679,7 @@ export function StratStageEditor({
                 : "default",
         }}
       />
-      {(placementMode?.kind === "ability" ||
-        placementMode?.kind === "visionCone") &&
+      {placementMode?.kind === "ability" &&
       placementMode.pendingOriginAttack &&
       abilityDirPreview ? (
         <line
@@ -730,130 +700,112 @@ export function StratStageEditor({
           pointerEvents="none"
         />
       ) : null}
-      {activeStage.visionCones.map((cone) => {
-        const sel = selectedId === cone.id;
-        const pos = stratStagePinForDisplay(vb, side, { x: cone.x, y: cone.y });
-        const sh = visionConeDisplayShape(
-          pos,
-          vbWidth,
-          cone.width,
-          cone.rotationDeg,
-          pinS,
-        );
-        const inPlayable =
-          visionLosContext != null && isVisionOriginInPlayable(pos, visionLosContext);
-        const losPoly =
-          visionLosContext && inPlayable
-            ? computeVisionConeLosPolygon({
-                origin: pos,
-                left: { x: sh.lx, y: sh.ly },
-                right: { x: sh.rx, y: sh.ry },
-                context: visionLosContext,
-              })
-            : [pos, { x: sh.lx, y: sh.ly }, { x: sh.rx, y: sh.ry }];
-        const coneMidRange = Math.hypot(sh.hx - pos.x, sh.hy - pos.y) / 0.78;
-        const rayEnd =
-          visionLosContext && inPlayable
-            ? computeVisionConeRayEnd({
-                origin: pos,
-                angleRad: (cone.rotationDeg * Math.PI) / 180,
-                context: visionLosContext,
-              })
-            : {
-                x:
-                  pos.x +
-                  Math.cos((cone.rotationDeg * Math.PI) / 180) * coneMidRange,
-                y:
-                  pos.y +
-                  Math.sin((cone.rotationDeg * Math.PI) / 180) * coneMidRange,
-              };
-        return (
-          <g key={cone.id}>
-            <polygon
-              points={losPoly.map((p) => `${p.x},${p.y}`).join(" ")}
-              fill="rgba(244,114,182,0.2)"
-              stroke="none"
-              style={{ cursor: placementMode ? "default" : "grab" }}
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                if (placementMode) return;
-                setSelectedId(cone.id);
-                focusMapSvg();
-                const svg = svgRef.current;
-                if (!svg) return;
-                const o = svgPointerToLogical(svg, e.clientX, e.clientY);
-                setDrag({
-                  kind: "visionCone",
-                  id: cone.id,
-                  grabDx: o.x - pos.x,
-                  grabDy: o.y - pos.y,
-                  pointerId: e.pointerId,
-                });
-              }}
-            />
-            {sel ? (
-              <>
-                <line
-                  x1={pos.x}
-                  y1={pos.y}
-                  x2={rayEnd.x}
-                  y2={rayEnd.y}
-                  stroke={VISION_CONE_TOKEN_COLOR}
-                  opacity={0.82}
-                  strokeWidth={Math.max(vbWidth * 0.0018, 0.85) * pinS}
-                  strokeDasharray="6 5"
-                  pointerEvents="none"
-                />
-                <circle
-                  cx={pos.x}
-                  cy={pos.y}
-                  r={Math.max(vbWidth * 0.0095, 4.5) * pinS}
-                  fill={VISION_CONE_TOKEN_COLOR}
-                  stroke="#faf5ff"
-                  strokeWidth={Math.max(vbWidth * 0.002, 1) * pinS}
-                  style={{ cursor: placementMode ? "default" : "grab", touchAction: "none" }}
-                  onPointerDown={(e) => {
-                    e.stopPropagation();
-                    if (placementMode) return;
-                    setSelectedId(cone.id);
-                    focusMapSvg();
-                    const svg = svgRef.current;
-                    if (!svg) return;
-                    const o = svgPointerToLogical(svg, e.clientX, e.clientY);
-                    setDrag({
-                      kind: "visionConeOrigin",
-                      id: cone.id,
-                      grabDx: o.x - pos.x,
-                      grabDy: o.y - pos.y,
-                      pointerId: e.pointerId,
-                    });
-                  }}
-                />
-                <circle
-                  cx={sh.hx}
-                  cy={sh.hy}
-                  r={Math.max(vbWidth * 0.0088, 4.2) * pinS}
-                  fill={VISION_CONE_TOKEN_COLOR}
-                  stroke="#faf5ff"
-                  strokeWidth={Math.max(vbWidth * 0.0019, 1) * pinS}
-                  style={{ cursor: placementMode ? "default" : "grab", touchAction: "none" }}
-                  onPointerDown={(e) => {
-                    e.stopPropagation();
-                    if (placementMode) return;
-                    setSelectedId(cone.id);
-                    focusMapSvg();
-                    setDrag({
-                      kind: "visionConeRotate",
-                      id: cone.id,
-                      pointerId: e.pointerId,
-                    });
-                  }}
-                />
-              </>
-            ) : null}
-          </g>
-        );
-      })}
+      {activeStage.agents
+        .filter((a) => a.visionConeWidth)
+        .map((agent) => {
+          const w = agent.visionConeWidth!;
+          const rot = agent.visionConeRotationDeg ?? 0;
+          const sel = selectedId === agent.id;
+          const pos = stratStagePinForDisplay(vb, side, {
+            x: agent.x,
+            y: agent.y,
+          });
+          const sh = stratAgentVisionConeDisplayHints(
+            pos,
+            vbWidth,
+            w,
+            rot,
+            pinS,
+          );
+          const inPlayable =
+            visionLosContextMerged != null &&
+            isVisionOriginInPlayable(pos, visionLosContextMerged);
+          const losPoly =
+            visionLosContextMerged && inPlayable
+              ? computeVisionConeLosPolygon({
+                  origin: pos,
+                  left: { x: sh.lx, y: sh.ly },
+                  right: { x: sh.rx, y: sh.ry },
+                  context: visionLosContextMerged,
+                })
+              : [pos, { x: sh.lx, y: sh.ly }, { x: sh.rx, y: sh.ry }];
+          const coneMidRange = Math.hypot(sh.hx - pos.x, sh.hy - pos.y) / 0.78;
+          const rayEnd =
+            visionLosContextMerged && inPlayable
+              ? computeVisionConeRayEnd({
+                  origin: pos,
+                  angleRad: (rot * Math.PI) / 180,
+                  context: visionLosContextMerged,
+                })
+              : {
+                  x: pos.x + Math.cos((rot * Math.PI) / 180) * coneMidRange,
+                  y: pos.y + Math.sin((rot * Math.PI) / 180) * coneMidRange,
+                };
+          return (
+            <g key={`vc-${agent.id}`}>
+              <polygon
+                points={losPoly.map((p) => `${p.x},${p.y}`).join(" ")}
+                fill="rgba(244,114,182,0.2)"
+                stroke="none"
+                style={{ cursor: placementMode ? "default" : "grab" }}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  if (placementMode) return;
+                  setSelectedId(agent.id);
+                  focusMapSvg();
+                  const svg = svgRef.current;
+                  if (!svg) return;
+                  const o = svgPointerToLogical(svg, e.clientX, e.clientY);
+                  setDrag({
+                    kind: "agent",
+                    id: agent.id,
+                    grabDx: o.x - pos.x,
+                    grabDy: o.y - pos.y,
+                    pointerId: e.pointerId,
+                  });
+                }}
+              />
+              {sel ? (
+                <>
+                  <line
+                    x1={pos.x}
+                    y1={pos.y}
+                    x2={rayEnd.x}
+                    y2={rayEnd.y}
+                    stroke={VISION_CONE_TOKEN_COLOR}
+                    opacity={0.82}
+                    strokeWidth={Math.max(vbWidth * 0.0018, 0.85) * pinS}
+                    strokeDasharray="6 5"
+                    pointerEvents="none"
+                  />
+                  <circle
+                    cx={sh.hx}
+                    cy={sh.hy}
+                    r={Math.max(vbWidth * 0.0088, 4.2) * pinS}
+                    fill={VISION_CONE_TOKEN_COLOR}
+                    stroke="#faf5ff"
+                    strokeWidth={Math.max(vbWidth * 0.0019, 1) * pinS}
+                    style={{
+                      cursor: placementMode ? "default" : "grab",
+                      touchAction: "none",
+                    }}
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      if (placementMode) return;
+                      setSelectedId(agent.id);
+                      focusMapSvg();
+                      setDrag({
+                        kind: "agentVisionConeRotate",
+                        agentId: agent.id,
+                        pointerId: e.pointerId,
+                      });
+                    }}
+                  />
+                </>
+              ) : null}
+            </g>
+          );
+        })}
       {activeStage.abilities.map((ab) => {
         const agentTheme =
           agentsCatalog.find((a) => a.slug === ab.agentSlug)?.theme_color ??
@@ -910,7 +862,9 @@ export function StratStageEditor({
                   )?.displayIcon ?? null
                 : null
             }
-            visionLosContext={visionLosContext}
+            visionLosContext={
+              visionLosContextByExcludeId.get(ab.id) ?? visionLosContextMerged
+            }
             pointerEvents="auto"
           />
         ) : (
@@ -1310,6 +1264,74 @@ export function StratStageEditor({
                   />
                 </div>
               </div>
+
+              {mapDoorOverlays.length > 0 ? (
+                <div className="rounded-md border border-emerald-900/35 bg-slate-950/45 p-3">
+                  <h4 className="text-xs font-semibold text-emerald-100/90">
+                    Doors (this stage)
+                  </h4>
+                  <p className="mt-1 text-[10px] leading-snug text-violet-400/75">
+                    Closed doors block vision cones. Open lets LOS pass through the
+                    doorway line. Values are saved on this stage only; matching the map
+                    default clears your override for that door.
+                  </p>
+                  <ul className="mt-2 max-h-40 space-y-2 overflow-y-auto pr-0.5 [scrollbar-gutter:stable]">
+                    {mapDoorOverlays.map((sh) => {
+                      const open = effectiveDoorIsOpen(
+                        sh,
+                        activeStage.doorOpenByOverlayId,
+                      );
+                      const mapDefault = catalogDefaultDoorOpen(sh);
+                      const label =
+                        sh.kind === "toggle_door"
+                          ? "Toggle door"
+                          : "Breakable doorway";
+                      const shortId =
+                        sh.id.length > 10
+                          ? `${sh.id.slice(0, 6)}…${sh.id.slice(-4)}`
+                          : sh.id;
+                      return (
+                        <li
+                          key={sh.id}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded border border-emerald-900/25 bg-slate-950/60 px-2 py-1.5"
+                        >
+                          <div className="min-w-0">
+                            <div className="text-[11px] font-medium text-violet-100/90">
+                              {label}
+                            </div>
+                            <div className="truncate font-mono text-[9px] text-violet-500/70">
+                              {shortId}
+                            </div>
+                          </div>
+                          <label className="flex shrink-0 cursor-pointer items-center gap-2 text-[11px] text-violet-200/90">
+                            <input
+                              type="checkbox"
+                              checked={open}
+                              onChange={(e) => {
+                                const want = e.target.checked;
+                                const cur = {
+                                  ...(activeStage.doorOpenByOverlayId ?? {}),
+                                };
+                                if (want === mapDefault) {
+                                  delete cur[sh.id];
+                                } else {
+                                  cur[sh.id] = want;
+                                }
+                                patchStage(activeStageIndex, {
+                                  doorOpenByOverlayId:
+                                    Object.keys(cur).length > 0 ? cur : {},
+                                });
+                              }}
+                              className="rounded border-violet-600/60"
+                            />
+                            Open
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="rounded-lg border border-violet-800/35 bg-slate-950/40 p-3">
@@ -1319,21 +1341,6 @@ export function StratStageEditor({
                     <span className="text-violet-200">Placement mode:</span>{" "}
                     {placementMode.kind === "agent" ? (
                       <>click the map to drop an agent token ({placementMode.slug}).</>
-                    ) : placementMode.kind === "visionCone" ? (
-                      placementMode.pendingOriginAttack ? (
-                        <>
-                          Second click:{" "}
-                          <strong className="text-violet-200">face</strong> the{" "}
-                          {placementMode.width === "wide" ? "wide" : "thin"}{" "}
-                          vision cone.
-                        </>
-                      ) : (
-                        <>
-                          Click the map for{" "}
-                          <strong className="text-violet-200">origin</strong>, then
-                          again for direction ({placementMode.width} cone).
-                        </>
-                      )
                     ) : placementMode.pendingOriginAttack ? (
                       <>
                         Second click: <strong className="text-violet-200">face</strong>{" "}
@@ -1378,10 +1385,10 @@ export function StratStageEditor({
                   <>
                     Choose <strong className="text-slate-200">agent name</strong>{" "}
                     or a <strong className="text-slate-200">Q/E/C/X</strong> chip,
-                    or a <strong className="text-slate-200">vision cone</strong>,
-                    then click the map. Drag pins to adjust; select a pin — the map
-                    grabs focus — then Delete or Backspace removes it (Escape clears
-                    selection).{" "}
+                    then click the map. Select an agent to attach a{" "}
+                    <strong className="text-slate-200">vision cone</strong> (wide or
+                    thin). Drag pins to adjust; select a pin — the map grabs focus —
+                    then Delete or Backspace removes it (Escape clears selection).{" "}
                     {
                       "Ability chips follow each agent's coach blueprint when set."
                     }
@@ -1396,46 +1403,77 @@ export function StratStageEditor({
               ) : null}
               <div className="mt-3 rounded-md border border-violet-800/30 bg-slate-950/35 p-2">
                 <p className="text-[11px] font-medium text-violet-300/80">
-                  Vision cones
+                  Agent vision cone
                 </p>
-                <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setPlacementMode((m) =>
-                        m?.kind === "visionCone" && m.width === "wide"
-                          ? null
-                          : { kind: "visionCone", width: "wide" },
-                      )
-                    }
-                    className={`rounded-md border px-2 py-1 text-xs font-medium ${
-                      placementMode?.kind === "visionCone" &&
-                      placementMode.width === "wide"
-                        ? "border-fuchsia-400 bg-fuchsia-950/60 text-white"
-                        : "border-violet-800/45 bg-slate-950/60 text-violet-200"
-                    }`}
-                  >
-                    Wide vision cone
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setPlacementMode((m) =>
-                        m?.kind === "visionCone" && m.width === "thin"
-                          ? null
-                          : { kind: "visionCone", width: "thin" },
-                      )
-                    }
-                    className={`rounded-md border px-2 py-1 text-xs font-medium ${
-                      placementMode?.kind === "visionCone" &&
-                      placementMode.width === "thin"
-                        ? "border-fuchsia-400 bg-fuchsia-950/60 text-white"
-                        : "border-violet-800/45 bg-slate-950/60 text-violet-200"
-                    }`}
-                  >
-                    Thin vision cone
-                  </button>
-                </div>
+                {activeStage.agents.some((a) => a.id === selectedId) ? (
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {(
+                      [
+                        { key: "off" as const, label: "Off" },
+                        { key: "wide" as const, label: "Wide" },
+                        { key: "thin" as const, label: "Thin" },
+                      ] as const
+                    ).map(({ key, label }) => {
+                      const ag = activeStage.agents.find(
+                        (x) => x.id === selectedId,
+                      )!;
+                      const cur =
+                        ag.visionConeWidth === "wide" ||
+                        ag.visionConeWidth === "thin"
+                          ? ag.visionConeWidth
+                          : ("off" as const);
+                      const active = cur === key;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => {
+                            if (key === "off") {
+                              setAgents(
+                                activeStageIndex,
+                                activeStage.agents.map((a) => {
+                                  if (a.id !== selectedId) return a;
+                                  const {
+                                    visionConeWidth: _vw,
+                                    visionConeRotationDeg: _vr,
+                                    ...rest
+                                  } = a;
+                                  return rest;
+                                }),
+                              );
+                              return;
+                            }
+                            setAgents(
+                              activeStageIndex,
+                              activeStage.agents.map((a) =>
+                                a.id === selectedId
+                                  ? {
+                                      ...a,
+                                      visionConeWidth: key,
+                                      visionConeRotationDeg:
+                                        a.visionConeRotationDeg ?? 0,
+                                    }
+                                  : a,
+                              ),
+                            );
+                          }}
+                          className={`rounded-md border px-2 py-1 text-xs font-medium ${
+                            active
+                              ? "border-fuchsia-400 bg-fuchsia-950/60 text-white"
+                              : "border-violet-800/45 bg-slate-950/60 text-violet-200"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="mt-1.5 text-[10px] leading-snug text-violet-500/75">
+                    Select an agent token on the map, then choose wide or thin. Drag
+                    the pink handle to aim; the cone moves with the agent.
+                  </p>
+                )}
               </div>
               {roster.length === 0 ? (
                 <p className="mt-2 text-xs text-amber-200/80">
@@ -1546,6 +1584,7 @@ export function StratStageEditor({
           embed
           initialVisibility={activeStage.mapLayerVisibility}
           visibilityScopeKey={activeStage.id}
+          doorOpenByOverlayId={activeStage.doorOpenByOverlayId}
           onVisibilityChange={(next) =>
             patchStage(activeStageIndex, { mapLayerVisibility: next })
           }

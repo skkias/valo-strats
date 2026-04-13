@@ -46,6 +46,7 @@ import type { StratPlacementMode } from "@/types/agent-ability";
 import { ABILITY_TEXTURE_OPTIONS, rgbaWithAlpha } from "@/lib/ability-textures";
 import { AbilityTextureDefs } from "@/components/ability/AbilityTextureDefs";
 import { normalizeAgentThemeColor } from "@/lib/agent-theme-color";
+import { shapeSupportsVisionObstructionModes } from "@/lib/ability-vision-blockers";
 
 const VB = BLUEPRINT_CANVAS_SIZE;
 const VB_STR = `0 0 ${VB} ${VB}`;
@@ -517,6 +518,8 @@ type Placement = {
   color: string;
   textureId?: AbilityTextureId;
   textureRadialFromOrigin?: boolean;
+  blocksVision?: boolean;
+  visionObstruction?: "filled" | "hollow";
   points: MapPoint[];
 };
 
@@ -670,6 +673,10 @@ export function AgentAbilityEditor({
   const [draftTexture, setDraftTexture] = useState<AbilityTextureId>("diag_fwd");
   const [draftTextureRadialFromOrigin, setDraftTextureRadialFromOrigin] =
     useState(false);
+  const [draftBlocksVision, setDraftBlocksVision] = useState(false);
+  const [draftVisionObstruction, setDraftVisionObstruction] = useState<
+    "filled" | "hollow"
+  >("filled");
   const [previewMapId, setPreviewMapId] = useState<string | null>(
     maps[0]?.id ?? null,
   );
@@ -721,6 +728,13 @@ export function AgentAbilityEditor({
       color: themeColor,
       textureId: draftTexture,
       textureRadialFromOrigin: draftTextureRadialFromOrigin,
+      blocksVision: draftBlocksVision ? true : undefined,
+      visionObstruction:
+        draftBlocksVision &&
+        shapeSupportsVisionObstructionModes(draftShape) &&
+        draftVisionObstruction === "hollow"
+          ? "hollow"
+          : undefined,
       points: [],
     });
     setBanner(null);
@@ -731,6 +745,8 @@ export function AgentAbilityEditor({
     themeColor,
     draftTexture,
     draftTextureRadialFromOrigin,
+    draftBlocksVision,
+    draftVisionObstruction,
   ]);
 
   const cancelPlacement = useCallback(() => {
@@ -789,6 +805,15 @@ export function AgentAbilityEditor({
         geometry: geo,
         stratPlacementMode: defaultStratPlacementForShape(placement.shapeKind),
       };
+      if (placement.blocksVision === true) {
+        next.blocksVision = true;
+        if (
+          shapeSupportsVisionObstructionModes(placement.shapeKind) &&
+          placement.visionObstruction === "hollow"
+        ) {
+          next.visionObstruction = "hollow";
+        }
+      }
       if (geo.kind === "cone") {
         next.origin = { x: geo.ox, y: geo.oy };
       }
@@ -854,6 +879,8 @@ export function AgentAbilityEditor({
           | "pointIconScale"
           | "textureId"
           | "textureRadialFromOrigin"
+          | "blocksVision"
+          | "visionObstruction"
         >
       >,
     ) => {
@@ -896,6 +923,24 @@ export function AgentAbilityEditor({
               n.textureRadialFromOrigin = true;
             } else {
               delete n.textureRadialFromOrigin;
+            }
+          }
+          if ("blocksVision" in patch) {
+            if (patch.blocksVision === true) {
+              n.blocksVision = true;
+            } else {
+              delete n.blocksVision;
+              delete n.visionObstruction;
+            }
+          }
+          if ("visionObstruction" in patch) {
+            if (
+              patch.visionObstruction === "hollow" &&
+              shapeSupportsVisionObstructionModes(n.shapeKind)
+            ) {
+              n.visionObstruction = "hollow";
+            } else {
+              delete n.visionObstruction;
             }
           }
           return n;
@@ -1455,6 +1500,54 @@ export function AgentAbilityEditor({
               Radialize texture from origin
             </label>
           </div>
+          <div className="space-y-2 rounded-md border border-slate-800/50 bg-slate-950/35 p-2.5">
+            <h4 className="text-[11px] font-semibold text-violet-100/90">
+              Vision line-of-sight
+            </h4>
+            <p className="text-[10px] leading-snug text-violet-400/75">
+              When enabled, this ability&apos;s on-map shape blocks token vision cones and
+              clips blueprint vision wedges. Enclosed shapes can use a hollow shell so the
+              interior stays visible (e.g. smoke rim).
+            </p>
+            <label className="flex cursor-pointer items-center gap-2 text-[11px] text-violet-200/90">
+              <input
+                type="checkbox"
+                checked={draftBlocksVision}
+                onChange={(e) => setDraftBlocksVision(e.target.checked)}
+                className="rounded border-violet-600/60"
+                disabled={!!placement}
+              />
+              Blocks vision cones
+            </label>
+            {draftBlocksVision &&
+            shapeSupportsVisionObstructionModes(draftShape) ? (
+              <div className="space-y-1.5 border-t border-violet-900/25 pt-2 text-[10px] text-violet-200/85">
+                <span className="font-medium text-violet-100/90">Enclosed shape</span>
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="radio"
+                    name="draft-vision-obs"
+                    checked={draftVisionObstruction === "filled"}
+                    onChange={() => setDraftVisionObstruction("filled")}
+                    disabled={!!placement}
+                    className="border-violet-600/60"
+                  />
+                  Filled obstruction — interior blocks LOS
+                </label>
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="radio"
+                    name="draft-vision-obs"
+                    checked={draftVisionObstruction === "hollow"}
+                    onChange={() => setDraftVisionObstruction("hollow")}
+                    disabled={!!placement}
+                    className="border-violet-600/60"
+                  />
+                  Hollow obstruction — boundary only, see-through center
+                </label>
+              </div>
+            ) : null}
+          </div>
           <button
             type="button"
             className="btn-primary w-full"
@@ -1717,6 +1810,60 @@ export function AgentAbilityEditor({
                     </p>
                   </div>
                 ) : null}
+                <div className="space-y-2 rounded-md border border-slate-800/50 bg-slate-950/35 p-2.5">
+                  <h4 className="text-[11px] font-semibold text-violet-100/90">
+                    Vision line-of-sight
+                  </h4>
+                  <label className="flex cursor-pointer items-center gap-2 text-[11px] text-violet-200/90">
+                    <input
+                      type="checkbox"
+                      checked={selected.blocksVision === true}
+                      onChange={(e) =>
+                        updateSelectedBlueprintMeta({
+                          blocksVision: e.target.checked ? true : undefined,
+                        })
+                      }
+                      className="rounded border-violet-600/60"
+                    />
+                    Blocks vision cones
+                  </label>
+                  {selected.blocksVision === true &&
+                  shapeSupportsVisionObstructionModes(selected.shapeKind) ? (
+                    <div className="space-y-1.5 border-t border-violet-900/25 pt-2 text-[10px] text-violet-200/85">
+                      <span className="font-medium text-violet-100/90">
+                        Enclosed shape
+                      </span>
+                      <label className="flex cursor-pointer items-center gap-2">
+                        <input
+                          type="radio"
+                          name={`vision-obs-${selected.id}`}
+                          checked={selected.visionObstruction !== "hollow"}
+                          onChange={() =>
+                            updateSelectedBlueprintMeta({
+                              visionObstruction: undefined,
+                            })
+                          }
+                          className="border-violet-600/60"
+                        />
+                        Filled obstruction — interior blocks LOS
+                      </label>
+                      <label className="flex cursor-pointer items-center gap-2">
+                        <input
+                          type="radio"
+                          name={`vision-obs-${selected.id}`}
+                          checked={selected.visionObstruction === "hollow"}
+                          onChange={() =>
+                            updateSelectedBlueprintMeta({
+                              visionObstruction: "hollow",
+                            })
+                          }
+                          className="border-violet-600/60"
+                        />
+                        Hollow obstruction — boundary only, see-through center
+                      </label>
+                    </div>
+                  ) : null}
+                </div>
                 <BlueprintGeometryFields
                   geometry={selected.geometry}
                   onChange={updateSelectedGeometry}

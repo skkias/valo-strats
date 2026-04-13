@@ -24,32 +24,14 @@ import {
   clampCoachMapPinScale,
   stratAbilityPinDimensions,
 } from "@/lib/strat-map-pin-scale";
+import { appendPlacedAbilitiesVisionBlockers } from "@/lib/ability-vision-blockers";
 import {
   buildVisionLosContext,
   computeVisionConeLosPolygon,
   isVisionOriginInPlayable,
+  type VisionLosContext,
 } from "@/lib/vision-cone-los";
-
-function visionConeDisplayShape(
-  origin: { x: number; y: number },
-  vbWidth: number,
-  width: "wide" | "thin",
-  rotationDeg: number,
-  scale = 1,
-) {
-  const len = vbWidth * (width === "wide" ? 0.13 : 0.16) * scale;
-  const halfDeg = width === "wide" ? 52 : 28;
-  const base = (rotationDeg * Math.PI) / 180;
-  const left = base + (halfDeg * Math.PI) / 180;
-  const right = base - (halfDeg * Math.PI) / 180;
-  return {
-    lx: origin.x + Math.cos(left) * len,
-    ly: origin.y + Math.sin(left) * len,
-    rx: origin.x + Math.cos(right) * len,
-    ry: origin.y + Math.sin(right) * len,
-    len,
-  };
-}
+import { stratAgentVisionConeDisplayHints } from "@/lib/strat-agent-vision-cone";
 
 export function StratStagePinsReadonly({
   gameMap,
@@ -126,43 +108,97 @@ export function StratStagePinsReadonly({
     };
   }, []);
 
-  const visionLosContext = useMemo(
-    () => buildVisionLosContext(gameMap, side),
-    [gameMap, side],
+  const visionLosBase = useMemo(
+    () => buildVisionLosContext(gameMap, side, stage.doorOpenByOverlayId),
+    [gameMap, side, stage.doorOpenByOverlayId],
   );
+  const visionLosContextMerged = useMemo(() => {
+    if (!visionLosBase) return null;
+    return appendPlacedAbilitiesVisionBlockers(visionLosBase, {
+      placedAbilities: stage.abilities,
+      agentsCatalog,
+      vb,
+      side,
+      vbWidth,
+      mapPinScale: pinS,
+    });
+  }, [
+    visionLosBase,
+    stage.abilities,
+    agentsCatalog,
+    vb,
+    side,
+    vbWidth,
+    pinS,
+  ]);
+  const visionLosContextByExcludeId = useMemo(() => {
+    const m = new Map<string, VisionLosContext>();
+    if (!visionLosBase) return m;
+    for (const ab of stage.abilities) {
+      m.set(
+        ab.id,
+        appendPlacedAbilitiesVisionBlockers(visionLosBase, {
+          placedAbilities: stage.abilities,
+          agentsCatalog,
+          vb,
+          side,
+          vbWidth,
+          mapPinScale: pinS,
+          excludePlacedAbilityId: ab.id,
+        }),
+      );
+    }
+    return m;
+  }, [
+    visionLosBase,
+    stage.abilities,
+    agentsCatalog,
+    vb,
+    side,
+    vbWidth,
+    pinS,
+  ]);
 
   return (
     <g style={{ pointerEvents: "none" }}>
-      {stage.visionCones.map((cone) => {
-        const pos = stratStagePinForDisplay(vb, side, { x: cone.x, y: cone.y });
-        const sh = visionConeDisplayShape(
-          pos,
-          vbWidth,
-          cone.width,
-          cone.rotationDeg,
-          pinS,
-        );
-        const inPlayable =
-          visionLosContext != null && isVisionOriginInPlayable(pos, visionLosContext);
-        const losPoly =
-          visionLosContext && inPlayable
-            ? computeVisionConeLosPolygon({
-                origin: pos,
-                left: { x: sh.lx, y: sh.ly },
-                right: { x: sh.rx, y: sh.ry },
-                context: visionLosContext,
-              })
-            : [pos, { x: sh.lx, y: sh.ly }, { x: sh.rx, y: sh.ry }];
-        return (
-          <g key={cone.id}>
-            <polygon
-              points={losPoly.map((p) => `${p.x},${p.y}`).join(" ")}
-              fill="rgba(244,114,182,0.2)"
-              stroke="none"
-            />
-          </g>
-        );
-      })}
+      {stage.agents
+        .filter((a) => a.visionConeWidth)
+        .map((agent) => {
+          const pos = stratStagePinForDisplay(vb, side, {
+            x: agent.x,
+            y: agent.y,
+          });
+          const rot = agent.visionConeRotationDeg ?? 0;
+          const w = agent.visionConeWidth!;
+          const sh = stratAgentVisionConeDisplayHints(
+            pos,
+            vbWidth,
+            w,
+            rot,
+            pinS,
+          );
+          const inPlayable =
+            visionLosContextMerged != null &&
+            isVisionOriginInPlayable(pos, visionLosContextMerged);
+          const losPoly =
+            visionLosContextMerged && inPlayable
+              ? computeVisionConeLosPolygon({
+                  origin: pos,
+                  left: { x: sh.lx, y: sh.ly },
+                  right: { x: sh.rx, y: sh.ry },
+                  context: visionLosContextMerged,
+                })
+              : [pos, { x: sh.lx, y: sh.ly }, { x: sh.rx, y: sh.ry }];
+          return (
+            <g key={`vc-${agent.id}`}>
+              <polygon
+                points={losPoly.map((p) => `${p.x},${p.y}`).join(" ")}
+                fill="rgba(244,114,182,0.2)"
+                stroke="none"
+              />
+            </g>
+          );
+        })}
       {stage.abilities.map((ab) => {
         const agentTheme =
           agentsCatalog.find((a) => a.slug === ab.agentSlug)?.theme_color ??
@@ -192,7 +228,9 @@ export function StratStagePinsReadonly({
                       )?.displayIcon ?? null
                     : null
                 }
-                visionLosContext={visionLosContext}
+                visionLosContext={
+                  visionLosContextByExcludeId.get(ab.id) ?? visionLosContextMerged
+                }
               />
             ) : (
               <g transform={`translate(${pos.x},${pos.y})`}>

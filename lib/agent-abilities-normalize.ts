@@ -7,6 +7,7 @@ import type {
 } from "@/types/agent-ability";
 import type { MapPoint } from "@/lib/map-path";
 import { normalizeAbilityTextureId } from "@/lib/ability-textures";
+import { shapeSupportsVisionObstructionModes } from "@/lib/ability-vision-blockers";
 
 const SLOTS: AgentAbilitySlot[] = ["q", "e", "c", "x"];
 
@@ -251,6 +252,19 @@ function normalizeTextureRadialFromOrigin(raw: unknown): boolean | undefined {
   return undefined;
 }
 
+function normalizeBlocksVision(raw: unknown): true | undefined {
+  if (raw === true) return true;
+  return undefined;
+}
+
+function normalizeVisionObstruction(
+  raw: unknown,
+): "filled" | "hollow" | undefined {
+  if (raw === "hollow") return "hollow";
+  if (raw === "filled") return "filled";
+  return undefined;
+}
+
 function normalizePointIconScale(raw: unknown): number | undefined {
   const n = Number(raw);
   if (!Number.isFinite(n)) return undefined;
@@ -284,6 +298,12 @@ export function normalizeAgentAbilityBlueprint(raw: unknown): AgentAbilityBluepr
   const textureRadialFromOrigin = normalizeTextureRadialFromOrigin(
     o.textureRadialFromOrigin ?? o.texture_radial_from_origin,
   );
+  const blocksVision = normalizeBlocksVision(
+    o.blocksVision ?? o.blocks_vision,
+  );
+  const visionObstructionIn = normalizeVisionObstruction(
+    o.visionObstruction ?? o.vision_obstruction,
+  );
   const base: AgentAbilityBlueprint = {
     id,
     slot,
@@ -302,6 +322,15 @@ export function normalizeAgentAbilityBlueprint(raw: unknown): AgentAbilityBluepr
   if (textureId) base.textureId = textureId;
   if (textureRadialFromOrigin === true) {
     base.textureRadialFromOrigin = true;
+  }
+  if (blocksVision === true) {
+    base.blocksVision = true;
+    if (
+      shapeSupportsVisionObstructionModes(shapeKind) &&
+      visionObstructionIn === "hollow"
+    ) {
+      base.visionObstruction = "hollow";
+    }
   }
   return base;
 }

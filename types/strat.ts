@@ -3,11 +3,17 @@ export type StratSide = "atk" | "def";
 /** How the map panel animates when advancing from this stage to the next. */
 export type StratStageTransition = "none" | "fade" | "slide-left" | "slide-right";
 
+export type StratVisionConeWidth = "wide" | "thin";
+
 export interface StratPlacedAgent {
   id: string;
   agentSlug: string;
   x: number;
   y: number;
+  /** Vision cone attached to this token; origin and drag follow the agent. */
+  visionConeWidth?: StratVisionConeWidth;
+  /** Heading of the cone in strat/map storage space (degrees). */
+  visionConeRotationDeg?: number;
 }
 
 export interface StratPlacedAbility {
@@ -24,25 +30,19 @@ export interface StratPlacedAbility {
   rotationDeg?: number;
 }
 
-export type StratVisionConeWidth = "wide" | "thin";
-
-export interface StratPlacedVisionCone {
-  id: string;
-  x: number;
-  y: number;
-  rotationDeg: number;
-  width: StratVisionConeWidth;
-}
-
 export interface StratStage {
   id: string;
   title: string;
   notes: string;
   agents: StratPlacedAgent[];
   abilities: StratPlacedAbility[];
-  visionCones: StratPlacedVisionCone[];
   /** Saved map layer filters for this stage (viewer + coach). */
   mapLayerVisibility?: StratStageLayerVisibility;
+  /**
+   * Per overlay id: door open (true) vs closed (false). Missing keys use map defaults
+   * (toggle: catalog `door_is_open`; breakable: closed / intact).
+   */
+  doorOpenByOverlayId?: Record<string, boolean>;
   /** Used when leaving this stage for the next (ignored on the last stage). */
   transition: StratStageTransition;
   transitionMs: number;

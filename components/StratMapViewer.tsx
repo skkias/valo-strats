@@ -35,6 +35,7 @@ import type { MapPoint, ViewBoxRect } from "@/lib/map-path";
 import { RopeOverlaySvg } from "@/components/RopeOverlaySvg";
 import { MAP_VIEW_VECTOR_STROKE_SCALE } from "@/lib/map-view-stroke-scale";
 import { normalizeStratStageLayerVisibility } from "@/lib/strat-stage-layer-visibility";
+import { overlayWithResolvedDoorState } from "@/lib/strat-stage-door-states";
 
 /** Read-only map overlay rendering (aligned with `MapShapeEditor` colors). */
 const SPAWN_ATK_FILL = "#ff3e3e";
@@ -246,16 +247,18 @@ function DoorwayOverlaySvg({
   const d = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
 
   if (sh.kind === "breakable_doorway") {
+    const open = sh.door_is_open === true;
     return (
       <path
         d={d}
         fill="none"
         stroke={BREAKABLE_DOORWAY_STROKE}
-        strokeWidth={swBase}
-        strokeDasharray="6 4 2 4"
+        strokeWidth={swBase * (open ? 1 : 1.18)}
+        strokeDasharray={open ? "6 4 2 4" : undefined}
         strokeLinecap="round"
         strokeLinejoin="round"
         pointerEvents="none"
+        opacity={open ? 1 : 0.95}
       />
     );
   }
@@ -368,6 +371,8 @@ export type StratMapViewerProps = {
   onVisibilityChange?: (next: StratMapLayerVisibility) => void;
   /** Change this to reset visibility from `initialVisibility` (e.g. stage id). */
   visibilityScopeKey?: string;
+  /** Per-stage door open/closed; affects map drawing and vision LOS when used with strat data. */
+  doorOpenByOverlayId?: Record<string, boolean>;
 };
 
 export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
@@ -382,6 +387,7 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
       initialVisibility,
       onVisibilityChange,
       visibilityScopeKey,
+      doorOpenByOverlayId,
     },
     ref,
   ) {
@@ -411,9 +417,17 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
     [ref],
   );
 
-  const { vb, overlays, spawn_markers, location_labels } = useMemo(
+  const { vb, overlays: rawOverlays, spawn_markers, location_labels } = useMemo(
     () => stratMapDisplayData(gameMap, side),
     [gameMap, side],
+  );
+
+  const overlays = useMemo(
+    () =>
+      rawOverlays.map((sh) =>
+        overlayWithResolvedDoorState(sh, doorOpenByOverlayId),
+      ),
+    [rawOverlays, doorOpenByOverlayId],
   );
 
   const mapGeoScale = mapGeometryScaleFromEditorMeta(

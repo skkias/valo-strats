@@ -63,6 +63,7 @@ export function StratViewerPanel({
       embed={embed}
       initialVisibility={stage.mapLayerVisibility}
       visibilityScopeKey={stage.id}
+      doorOpenByOverlayId={stage.doorOpenByOverlayId}
     >
       <StratStagePinsReadonly
         gameMap={gameMap}

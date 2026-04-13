@@ -6,11 +6,23 @@ import { outlinePathForStratDisplay } from "@/lib/map-strat-side";
 import { stratMapDisplayData } from "@/lib/strat-map-display";
 import { circleToPolygon, isCircleOverlay } from "@/lib/map-overlay-geometry";
 import { pointInOutlineWithHoles, pointInPolygon } from "@/lib/polygon-contains";
+import {
+  effectiveDoorIsOpen,
+  type StratDoorOpenByOverlayId,
+} from "@/lib/strat-stage-door-states";
 
 export type VisionLosContext = {
   outer: MapPoint[];
   holes: MapPoint[][];
-  blockerPolygons: MapPoint[][];
+  /** Filled zones: edges block rays; interior invalidates vision-cone origins. */
+  filledBlockerPolygons: MapPoint[][];
+  /**
+   * Hollow shells (e.g. smoke rim): boundary can block, but interior is
+   * transparent to LOS and vision origins may lie inside.
+   */
+  hollowBlockerRings: MapPoint[][];
+  /** Opaque 1D obstacles (walls drawn as lines, rays, polylines). */
+  openBlockerSegments: Segment[];
 };
 
 type Segment = { a: MapPoint; b: MapPoint };
@@ -56,26 +68,70 @@ function normalizeSignedRad(rad: number): number {
   return r;
 }
 
-export function buildVisionLosContext(
-  gameMap: GameMap,
-  side: StratSide,
-): VisionLosContext | null {
-  const outlinePath = outlinePathForStratDisplay(gameMap, side);
-  const rings = parsePathToRings(outlinePath);
-  const outer = rings[0] ?? [];
-  if (outer.length < 3) return null;
-  const holes = rings.slice(1).filter((r) => r.length >= 3);
-  const overlays = stratMapDisplayData(gameMap, side).overlays;
-  const blockerPolygons: MapPoint[][] = overlays
-    .filter((sh) => sh.kind === "obstacle" || sh.kind === "wall")
-    .map((sh) => {
-      if (isCircleOverlay(sh) && sh.circle) {
-        return circleToPolygon(sh.circle, 72);
-      }
-      return sh.points;
-    })
-    .filter((pts) => pts.length >= 3);
-  return { outer, holes, blockerPolygons };
+function opaqueSegmentsFromContext(ctx: VisionLosContext): Segment[] {
+  return [
+    ...ringSegments(ctx.outer),
+    ...ctx.holes.flatMap((h) => ringSegments(h)),
+    ...ctx.filledBlockerPolygons.flatMap((p) => ringSegments(p)),
+    ...ctx.openBlockerSegments,
+  ];
+}
+
+function sortedUniqueRayRingHits(
+  o: MapPoint,
+  dx: number,
+  dy: number,
+  ring: MapPoint[],
+  maxT: number,
+): number[] {
+  const ts: number[] = [];
+  for (const seg of ringSegments(ring)) {
+    const t = raySegmentHitDistance(o, dx, dy, seg);
+    if (t != null && t > 1e-6 && t <= maxT + 1e-6) ts.push(t);
+  }
+  ts.sort((a, b) => a - b);
+  const out: number[] = [];
+  for (const t of ts) {
+    if (out.length === 0 || Math.abs(t - out[out.length - 1]!) > 1e-4) {
+      out.push(t);
+    }
+  }
+  return out;
+}
+
+/**
+ * If the ray can pass through a hollow ring before the next opaque hit, return
+ * how far along the ray to advance (past the exit boundary).
+ */
+function trySkipThroughHollowRing(
+  o: MapPoint,
+  dx: number,
+  dy: number,
+  ring: MapPoint[],
+  remaining: number,
+  nextOpaqueDist: number | null,
+): number | null {
+  const EPS = 1e-3;
+  const cap = Math.min(remaining, nextOpaqueDist ?? remaining);
+  const ts = sortedUniqueRayRingHits(o, dx, dy, ring, cap + EPS);
+  const inside = pointInPolygon(o, ring);
+
+  if (inside) {
+    if (ts.length === 0) return null;
+    const t0 = ts[0]!;
+    if (t0 > cap + EPS) return null;
+    return Math.min(t0 + EPS, remaining);
+  }
+
+  if (ts.length >= 2) {
+    const tEnter = ts[0]!;
+    const tExit = ts[1]!;
+    if (tEnter > cap + EPS) return null;
+    if (tExit > cap + EPS) return null;
+    return Math.min(tExit + EPS, remaining);
+  }
+
+  return null;
 }
 
 function nearestRayHitDistance(
@@ -86,18 +142,109 @@ function nearestRayHitDistance(
 ): number {
   const dx = Math.cos(angleRad);
   const dy = Math.sin(angleRad);
-  const boundarySegments: Segment[] = [
-    ...ringSegments(context.outer),
-    ...context.holes.flatMap((h) => ringSegments(h)),
-    ...context.blockerPolygons.flatMap((p) => ringSegments(p)),
-  ];
-  let nearest = maxRange;
-  for (const seg of boundarySegments) {
-    const hit = raySegmentHitDistance(origin, dx, dy, seg);
-    if (hit == null) continue;
-    if (hit < nearest) nearest = hit;
+  const EPS = 1e-3;
+  let traveled = 0;
+  let ox = origin.x;
+  let oy = origin.y;
+  let remaining = maxRange;
+
+  for (let iter = 0; iter < 128; iter++) {
+    if (remaining <= EPS) return traveled;
+
+    const opaqueSegs = opaqueSegmentsFromContext(context);
+    let nextOpaque: number | null = null;
+    for (const seg of opaqueSegs) {
+      const t = raySegmentHitDistance({ x: ox, y: oy }, dx, dy, seg);
+      if (t != null && t > EPS && t <= remaining + EPS) {
+        if (nextOpaque == null || t < nextOpaque) nextOpaque = t;
+      }
+    }
+
+    for (const ring of context.hollowBlockerRings) {
+      const oPt = { x: ox, y: oy };
+      const ts = sortedUniqueRayRingHits(oPt, dx, dy, ring, remaining + EPS);
+      if (ts.length === 1 && !pointInPolygon(oPt, ring)) {
+        const t0 = ts[0]!;
+        if (nextOpaque == null || t0 < nextOpaque) nextOpaque = t0;
+      }
+    }
+
+    let bestSkip: number | null = null;
+    for (const ring of context.hollowBlockerRings) {
+      const skip = trySkipThroughHollowRing(
+        { x: ox, y: oy },
+        dx,
+        dy,
+        ring,
+        remaining + EPS,
+        nextOpaque,
+      );
+      if (skip != null && skip > EPS && (bestSkip == null || skip < bestSkip)) {
+        bestSkip = skip;
+      }
+    }
+
+    if (
+      bestSkip != null &&
+      (nextOpaque == null || bestSkip < nextOpaque - EPS)
+    ) {
+      const step = Math.min(bestSkip, remaining);
+      traveled += step;
+      ox += dx * step;
+      oy += dy * step;
+      remaining -= step;
+      continue;
+    }
+
+    if (nextOpaque != null) {
+      return traveled + Math.min(nextOpaque, remaining);
+    }
+
+    return traveled + remaining;
   }
-  return nearest;
+
+  return traveled;
+}
+
+export function buildVisionLosContext(
+  gameMap: GameMap,
+  side: StratSide,
+  doorOpenByOverlayId?: StratDoorOpenByOverlayId,
+): VisionLosContext | null {
+  const outlinePath = outlinePathForStratDisplay(gameMap, side);
+  const rings = parsePathToRings(outlinePath);
+  const outer = rings[0] ?? [];
+  if (outer.length < 3) return null;
+  const holes = rings.slice(1).filter((r) => r.length >= 3);
+  const overlays = stratMapDisplayData(gameMap, side).overlays;
+  const filledBlockerPolygons: MapPoint[][] = overlays
+    .filter((sh) => sh.kind === "obstacle" || sh.kind === "wall")
+    .map((sh) => {
+      if (isCircleOverlay(sh) && sh.circle) {
+        return circleToPolygon(sh.circle, 72);
+      }
+      return sh.points;
+    })
+    .filter((pts) => pts.length >= 3);
+
+  const openBlockerSegments: Segment[] = [];
+  for (const sh of overlays) {
+    if (sh.kind !== "toggle_door" && sh.kind !== "breakable_doorway") continue;
+    if (effectiveDoorIsOpen(sh, doorOpenByOverlayId)) continue;
+    const pts = sh.points;
+    if (pts.length < 2) continue;
+    for (let i = 0; i + 1 < pts.length; i++) {
+      openBlockerSegments.push({ a: pts[i]!, b: pts[i + 1]! });
+    }
+  }
+
+  return {
+    outer,
+    holes,
+    filledBlockerPolygons,
+    hollowBlockerRings: [],
+    openBlockerSegments,
+  };
 }
 
 export function isVisionOriginInPlayable(
@@ -105,7 +252,7 @@ export function isVisionOriginInPlayable(
   context: VisionLosContext,
 ): boolean {
   if (!pointInOutlineWithHoles(origin, context.outer, context.holes)) return false;
-  for (const poly of context.blockerPolygons) {
+  for (const poly of context.filledBlockerPolygons) {
     if (pointInPolygon(origin, poly)) return false;
   }
   return true;
@@ -113,7 +260,7 @@ export function isVisionOriginInPlayable(
 
 /**
  * Large enough cast distance so rays reach the far side of the map; actual
- * length is always clamped by {@link nearestRayHitDistance}.
+ * length is always clamped by ray hits.
  */
 export function visionLosMaxCastRange(
   origin: MapPoint,
@@ -133,7 +280,11 @@ export function visionLosMaxCastRange(
   };
   expand(context.outer);
   for (const h of context.holes) expand(h);
-  for (const poly of context.blockerPolygons) expand(poly);
+  for (const poly of context.filledBlockerPolygons) expand(poly);
+  for (const ring of context.hollowBlockerRings) expand(ring);
+  for (const seg of context.openBlockerSegments) {
+    expand([seg.a, seg.b]);
+  }
   if (!Number.isFinite(minX)) return 1e9;
   const corners: MapPoint[] = [
     { x: minX, y: minY },

@@ -1,7 +1,6 @@
 import type {
   StratPlacedAbility,
   StratPlacedAgent,
-  StratPlacedVisionCone,
   StratStageLayerVisibility,
   StratStage,
   StratStageTransition,
@@ -11,6 +10,7 @@ import {
   DEFAULT_STRAT_STAGE_LAYER_VISIBILITY,
   normalizeStratStageLayerVisibility,
 } from "@/lib/strat-stage-layer-visibility";
+import { normalizeStratDoorOpenByOverlayId } from "@/lib/strat-stage-door-states";
 
 const TRANSITIONS: StratStageTransition[] = [
   "none",
@@ -36,8 +36,8 @@ export function createEmptyStratStage(index: number): StratStage {
     notes: "",
     agents: [],
     abilities: [],
-    visionCones: [],
     mapLayerVisibility: { ...DEFAULT_STRAT_STAGE_LAYER_VISIBILITY },
+    doorOpenByOverlayId: {},
     transition: "fade",
     transitionMs: 450,
   };
@@ -70,7 +70,20 @@ function normalizeAgent(raw: unknown): StratPlacedAgent | null {
   if (!agentSlug) return null;
   const x = isFiniteNum(o.x) ? o.x : 0;
   const y = isFiniteNum(o.y) ? o.y : 0;
-  return { id, agentSlug, x, y };
+  const widthRaw = o.visionConeWidth ?? o.vision_cone_width;
+  const visionConeWidth =
+    typeof widthRaw === "string" &&
+    VISION_CONE_WIDTHS.includes(widthRaw as StratVisionConeWidth)
+      ? (widthRaw as StratVisionConeWidth)
+      : undefined;
+  const rotRaw = o.visionConeRotationDeg ?? o.vision_cone_rotation_deg;
+  const visionConeRotationDeg = isFiniteNum(rotRaw) ? rotRaw : undefined;
+  const out: StratPlacedAgent = { id, agentSlug, x, y };
+  if (visionConeWidth) {
+    out.visionConeWidth = visionConeWidth;
+    out.visionConeRotationDeg = visionConeRotationDeg ?? 0;
+  }
+  return out;
 }
 
 function normalizeAbility(raw: unknown): StratPlacedAbility | null {
@@ -98,23 +111,6 @@ function normalizeAbility(raw: unknown): StratPlacedAbility | null {
   return out;
 }
 
-function normalizeVisionCone(raw: unknown): StratPlacedVisionCone | null {
-  if (!raw || typeof raw !== "object") return null;
-  const o = raw as Record<string, unknown>;
-  const id = typeof o.id === "string" && o.id ? o.id : newId();
-  const x = isFiniteNum(o.x) ? o.x : 0;
-  const y = isFiniteNum(o.y) ? o.y : 0;
-  const rotationRaw = o.rotationDeg ?? o.rotation_deg;
-  const rotationDeg = isFiniteNum(rotationRaw) ? rotationRaw : 0;
-  const widthRaw = o.width;
-  const width =
-    typeof widthRaw === "string" &&
-    VISION_CONE_WIDTHS.includes(widthRaw as StratVisionConeWidth)
-      ? (widthRaw as StratVisionConeWidth)
-      : "wide";
-  return { id, x, y, rotationDeg, width };
-}
-
 function normalizeStage(raw: unknown, index: number): StratStage {
   if (!raw || typeof raw !== "object") return createEmptyStratStage(index);
   const o = raw as Record<string, unknown>;
@@ -126,10 +122,6 @@ function normalizeStage(raw: unknown, index: number): StratStage {
   const notes = typeof o.notes === "string" ? o.notes : "";
   const agentsIn = Array.isArray(o.agents) ? o.agents : [];
   const abilitiesIn = Array.isArray(o.abilities) ? o.abilities : [];
-  const visionConesRaw = o.visionCones ?? o.vision_cones;
-  const visionConesIn: unknown[] = Array.isArray(visionConesRaw)
-    ? visionConesRaw
-    : [];
   const agentsRaw = agentsIn
     .map(normalizeAgent)
     .filter((x): x is StratPlacedAgent => x != null);
@@ -143,14 +135,14 @@ function normalizeStage(raw: unknown, index: number): StratStage {
   const abilities = abilitiesIn
     .map(normalizeAbility)
     .filter((x): x is StratPlacedAbility => x != null);
-  const visionCones = visionConesIn
-    .map(normalizeVisionCone)
-    .filter((x): x is StratPlacedVisionCone => x != null);
   const transition = normalizeTransition(o.transition);
   const mapLayerVisibility: StratStageLayerVisibility =
     normalizeStratStageLayerVisibility(
       o.mapLayerVisibility ?? o.map_layer_visibility,
     );
+  const doorOpenByOverlayId = normalizeStratDoorOpenByOverlayId(
+    o.doorOpenByOverlayId ?? o.door_open_by_overlay_id,
+  );
   const transitionMsRaw = o.transitionMs ?? o.transition_ms;
   const transitionMs =
     typeof transitionMsRaw === "number" &&
@@ -159,17 +151,20 @@ function normalizeStage(raw: unknown, index: number): StratStage {
       ? Math.min(4000, Math.max(0, Math.round(transitionMsRaw)))
       : 450;
 
-  return {
+  const stage: StratStage = {
     id,
     title,
     notes,
     agents,
     abilities,
-    visionCones,
     mapLayerVisibility,
     transition,
     transitionMs,
   };
+  if (Object.keys(doorOpenByOverlayId).length > 0) {
+    stage.doorOpenByOverlayId = doorOpenByOverlayId;
+  }
+  return stage;
 }
 
 /** Safe for DB rows and API payloads. */
