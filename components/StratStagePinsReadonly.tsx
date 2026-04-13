@@ -24,6 +24,11 @@ import {
   stratAbilityRotationHandleDistance,
   stratAbilityRotationHandleStored,
 } from "@/lib/strat-ability-rotation-handle";
+import {
+  blueprintPointToStratMapDisplay,
+  rectanglePlacementEdgeBlueprint,
+  stratAnchorOverrideForBlueprint,
+} from "@/lib/strat-blueprint-map-point";
 
 export function StratStagePinsReadonly({
   vb,
@@ -122,6 +127,12 @@ export function StratStagePinsReadonly({
         const bp = agentBlueprintForSlot(agentsCatalog, ab.agentSlug, ab.slot);
         const useTwoHandles =
           bp != null && effectiveStratPlacementMode(bp) === "origin_direction";
+        const stratOv = bp ? stratAnchorOverrideForBlueprint(bp) : undefined;
+        const isRectOD =
+          useTwoHandles &&
+          bp != null &&
+          bp.shapeKind === "rectangle" &&
+          bp.geometry.kind === "rectangle";
         const rotDist = stratAbilityRotationHandleDistance(vbWidth);
         const rotStored = stratAbilityRotationHandleStored(
           { x: ab.x, y: ab.y },
@@ -129,6 +140,18 @@ export function StratStagePinsReadonly({
           rotDist,
         );
         const rotPos = stratStagePinForDisplay(vb, side, rotStored);
+        const edgePos =
+          isRectOD && bp && bp.geometry.kind === "rectangle"
+            ? blueprintPointToStratMapDisplay(
+                rectanglePlacementEdgeBlueprint(bp.geometry),
+                bp,
+                pos.x,
+                pos.y,
+                vbWidth,
+                ab.rotationDeg ?? 0,
+                stratOv,
+              )
+            : null;
 
         return (
           <g key={ab.id}>
@@ -140,6 +163,7 @@ export function StratStagePinsReadonly({
                 vbWidth={vbWidth}
                 rotationDeg={ab.rotationDeg ?? 0}
                 pointerEvents="none"
+                stratAnchorOverride={stratOv}
                 abilityDisplayIconUrl={
                   bp.shapeKind === "point"
                     ? abilityMetaForSlot(
@@ -175,25 +199,25 @@ export function StratStagePinsReadonly({
             {useTwoHandles ? (
               <g pointerEvents="none">
                 <line
-                  x1={pos.x}
-                  y1={pos.y}
-                  x2={rotPos.x}
-                  y2={rotPos.y}
+                  x1={isRectOD && edgePos ? edgePos.x : pos.x}
+                  y1={isRectOD && edgePos ? edgePos.y : pos.y}
+                  x2={isRectOD ? pos.x : rotPos.x}
+                  y2={isRectOD ? pos.y : rotPos.y}
                   stroke="rgba(34, 211, 238, 0.55)"
                   strokeWidth={Math.max(vbWidth * 0.0016, 0.75)}
                   strokeDasharray="5 4"
                 />
                 <circle
-                  cx={pos.x}
-                  cy={pos.y}
+                  cx={isRectOD && edgePos ? edgePos.x : pos.x}
+                  cy={isRectOD && edgePos ? edgePos.y : pos.y}
                   r={Math.max(vbWidth * 0.007, 3.5)}
                   fill="rgb(250, 204, 21)"
                   stroke="rgb(15, 23, 42)"
                   strokeWidth={Math.max(vbWidth * 0.0018, 0.8)}
                 />
                 <circle
-                  cx={rotPos.x}
-                  cy={rotPos.y}
+                  cx={isRectOD ? pos.x : rotPos.x}
+                  cy={isRectOD ? pos.y : rotPos.y}
                   r={Math.max(vbWidth * 0.0065, 3)}
                   fill="rgb(34, 211, 238)"
                   stroke="rgb(15, 23, 42)"

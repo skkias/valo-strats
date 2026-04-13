@@ -49,6 +49,11 @@ import {
   stratAbilityRotationHandleDistance,
   stratAbilityRotationHandleStored,
 } from "@/lib/strat-ability-rotation-handle";
+import {
+  blueprintPointToStratMapDisplay,
+  rectanglePlacementEdgeBlueprint,
+  stratAnchorOverrideForBlueprint,
+} from "@/lib/strat-blueprint-map-point";
 
 type PlacementMode =
   | null
@@ -612,6 +617,12 @@ export function StratStageEditor({
         const bp = agentBlueprintForSlot(agentsCatalog, ab.agentSlug, ab.slot);
         const useTwoHandles =
           bp != null && effectiveStratPlacementMode(bp) === "origin_direction";
+        const stratOv = bp ? stratAnchorOverrideForBlueprint(bp) : undefined;
+        const isRectOD =
+          useTwoHandles &&
+          bp != null &&
+          bp.shapeKind === "rectangle" &&
+          bp.geometry.kind === "rectangle";
         const rotDist = stratAbilityRotationHandleDistance(vbWidth);
         const rotStored = stratAbilityRotationHandleStored(
           { x: ab.x, y: ab.y },
@@ -619,6 +630,18 @@ export function StratStageEditor({
           rotDist,
         );
         const rotPos = stratStagePinForDisplay(vb, side, rotStored);
+        const edgePos =
+          isRectOD && bp && bp.geometry.kind === "rectangle"
+            ? blueprintPointToStratMapDisplay(
+                rectanglePlacementEdgeBlueprint(bp.geometry),
+                bp,
+                pos.x,
+                pos.y,
+                vbWidth,
+                ab.rotationDeg ?? 0,
+                stratOv,
+              )
+            : null;
 
         const abilitySvg = bp ? (
           <StratAbilityBlueprintSvg
@@ -628,6 +651,7 @@ export function StratStageEditor({
             vbWidth={vbWidth}
             rotationDeg={ab.rotationDeg ?? 0}
             selected={sel}
+            stratAnchorOverride={stratOv}
             abilityDisplayIconUrl={
               bp.shapeKind === "point"
                 ? abilityMetaForSlot(
@@ -680,18 +704,18 @@ export function StratStageEditor({
                 {abilitySvg}
               </g>
               <line
-                x1={pos.x}
-                y1={pos.y}
-                x2={rotPos.x}
-                y2={rotPos.y}
+                x1={isRectOD && edgePos ? edgePos.x : pos.x}
+                y1={isRectOD && edgePos ? edgePos.y : pos.y}
+                x2={isRectOD ? pos.x : rotPos.x}
+                y2={isRectOD ? pos.y : rotPos.y}
                 stroke="rgba(34, 211, 238, 0.7)"
                 strokeWidth={Math.max(vbWidth * 0.0018, 0.85)}
                 strokeDasharray="6 5"
                 pointerEvents="none"
               />
               <circle
-                cx={pos.x}
-                cy={pos.y}
+                cx={isRectOD && edgePos ? edgePos.x : pos.x}
+                cy={isRectOD && edgePos ? edgePos.y : pos.y}
                 r={Math.max(vbWidth * 0.01, 5)}
                 fill="rgb(250, 204, 21)"
                 stroke={sel ? "#faf5ff" : "rgb(15, 23, 42)"}
@@ -708,18 +732,19 @@ export function StratStageEditor({
                   const svg = svgRef.current;
                   if (!svg) return;
                   const o = svgPointerToLogical(svg, e.clientX, e.clientY);
+                  const grabFrom = isRectOD && edgePos ? edgePos : pos;
                   setDrag({
                     kind: "abilityOrigin",
                     id: ab.id,
-                    grabDx: o.x - pos.x,
-                    grabDy: o.y - pos.y,
+                    grabDx: o.x - grabFrom.x,
+                    grabDy: o.y - grabFrom.y,
                     pointerId: e.pointerId,
                   });
                 }}
               />
               <circle
-                cx={rotPos.x}
-                cy={rotPos.y}
+                cx={isRectOD ? pos.x : rotPos.x}
+                cy={isRectOD ? pos.y : rotPos.y}
                 r={Math.max(vbWidth * 0.009, 4.5)}
                 fill="rgb(34, 211, 238)"
                 stroke={sel ? "#faf5ff" : "rgb(15, 23, 42)"}

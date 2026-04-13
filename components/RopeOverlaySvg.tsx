@@ -2,6 +2,7 @@
 
 import type { MapOverlayShape } from "@/types/catalog";
 import { ropePolylinePoints } from "@/lib/map-extra-paths";
+import { MAP_VIEW_VECTOR_STROKE_SCALE } from "@/lib/map-view-stroke-scale";
 
 const ROPE_STROKE = "rgb(245, 158, 11)";
 const ROPE_STROKE_HI = "rgb(253, 224, 71)";
@@ -20,7 +21,8 @@ export function RopeOverlaySvg({
 }) {
   if (sh.kind !== "rope") return null;
   const pts = ropePolylinePoints(sh);
-  const sw = vbWidth * 0.0036 * (highlight ? 1.15 : 1);
+  const sw =
+    vbWidth * 0.0036 * (highlight ? 1.15 : 1) * MAP_VIEW_VECTOR_STROKE_SCALE;
   const stroke = highlight ? ROPE_STROKE_HI : ROPE_STROKE;
   const rEnd = vbWidth * 0.007;
 

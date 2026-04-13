@@ -31,6 +31,7 @@ function PointBlueprintMark({
   y,
   accentStroke,
   displayIconUrl,
+  iconScale = 1,
   selected,
   swMap,
   op,
@@ -40,13 +41,16 @@ function PointBlueprintMark({
   y: number;
   accentStroke: string;
   displayIconUrl: string | null | undefined;
+  /** Multiplier for base icon size in blueprint units (point abilities). */
+  iconScale?: number;
   selected: boolean;
   swMap: number;
   op: number;
   pointerEvents: "none" | "auto";
 }) {
   const [imgFailed, setImgFailed] = useState(false);
-  const size = BP * 0.038;
+  const scale = Math.min(3, Math.max(0.12, iconScale));
+  const size = BP * 0.038 * scale;
   const half = size / 2;
   const showImg =
     typeof displayIconUrl === "string" &&
@@ -91,7 +95,7 @@ function PointBlueprintMark({
         <circle
           cx={x}
           cy={y}
-          r={BP * 0.018}
+          r={BP * 0.018 * scale}
           fill={accentStroke}
           stroke={selected ? "#fae8ff" : "#fff"}
           vectorEffect="non-scaling-stroke"
@@ -119,6 +123,11 @@ export function StratAbilityBlueprintSvg({
   pointerEvents = "auto",
   /** Valorant API `displayIcon` URL for point shapes — shows ability art instead of a dot. */
   abilityDisplayIconUrl,
+  /**
+   * When set (e.g. rectangle = geometric center), strat rotation is around this blueprint
+   * point instead of `blueprint.origin` / bbox center.
+   */
+  stratAnchorOverride,
 }: {
   blueprint: AgentAbilityBlueprint;
   mapX: number;
@@ -129,11 +138,12 @@ export function StratAbilityBlueprintSvg({
   selected?: boolean;
   pointerEvents?: "none" | "auto";
   abilityDisplayIconUrl?: string | null;
+  stratAnchorOverride?: { x: number; y: number } | null;
 }) {
   const g = blueprint.geometry;
   const stroke = blueprint.color;
   const fill = `${blueprint.color}44`;
-  const anchor = blueprintStratAnchor(blueprint);
+  const anchor = stratAnchorOverride ?? blueprintStratAnchor(blueprint);
   const scale = stratBlueprintUnitsToMapScale(vbWidth);
   const swMap =
     Math.max(vbWidth * 0.0016, 1.25) *
@@ -151,13 +161,21 @@ export function StratAbilityBlueprintSvg({
   let inner: ReactNode = null;
 
   switch (g.kind) {
-    case "point":
+    case "point": {
+      const iconScale =
+        typeof blueprint.pointIconScale === "number" &&
+        Number.isFinite(blueprint.pointIconScale)
+          ? blueprint.pointIconScale
+          : 1;
+      const effectiveIconUrl =
+        blueprint.pointIconShow === false ? null : abilityDisplayIconUrl;
       inner = (
         <PointBlueprintMark
           x={g.x}
           y={g.y}
           accentStroke={stroke}
-          displayIconUrl={abilityDisplayIconUrl}
+          displayIconUrl={effectiveIconUrl}
+          iconScale={iconScale}
           selected={!!selected}
           swMap={swMap}
           op={op}
@@ -165,6 +183,7 @@ export function StratAbilityBlueprintSvg({
         />
       );
       break;
+    }
     case "circle":
       inner = (
         <g opacity={op} style={{ pointerEvents }}>

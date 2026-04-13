@@ -196,18 +196,21 @@ function PointBlueprintEditorPreview({
   y,
   stroke,
   displayIconUrl,
+  iconScale = 1,
   dimmed,
 }: {
   x: number;
   y: number;
   stroke: string;
   displayIconUrl?: string | null;
+  iconScale?: number;
   dimmed?: boolean;
 }) {
   const [imgFailed, setImgFailed] = useState(false);
   const sw = VB * 0.004;
   const op = dimmed ? 0.35 : 0.95;
-  const size = VB * 0.038;
+  const scale = Math.min(3, Math.max(0.12, iconScale));
+  const size = VB * 0.038 * scale;
   const half = size / 2;
   const showImg =
     typeof displayIconUrl === "string" &&
@@ -248,7 +251,7 @@ function PointBlueprintEditorPreview({
         <circle
           cx={x}
           cy={y}
-          r={VB * 0.018}
+          r={VB * 0.018 * scale}
           fill={stroke}
           stroke="#fff"
           strokeWidth={sw}
@@ -281,7 +284,10 @@ function AbilityShapePreview({
           x={g.x}
           y={g.y}
           stroke={stroke}
-          displayIconUrl={displayIconUrl}
+          displayIconUrl={
+            b.pointIconShow === false ? null : displayIconUrl
+          }
+          iconScale={b.pointIconScale ?? 1}
           dimmed={dimmed}
         />
       );
@@ -698,7 +704,17 @@ export function AgentAbilityEditor({
   );
 
   const updateSelectedBlueprintMeta = useCallback(
-    (patch: Partial<Pick<AgentAbilityBlueprint, "origin" | "stratPlacementMode">>) => {
+    (
+      patch: Partial<
+        Pick<
+          AgentAbilityBlueprint,
+          | "origin"
+          | "stratPlacementMode"
+          | "pointIconShow"
+          | "pointIconScale"
+        >
+      >,
+    ) => {
       if (!selectedId) return;
       setAbilities((list) =>
         list.map((b) => {
@@ -713,6 +729,17 @@ export function AgentAbilityEditor({
               delete n.stratPlacementMode;
             } else {
               n.stratPlacementMode = patch.stratPlacementMode;
+            }
+          }
+          if ("pointIconShow" in patch) {
+            if (patch.pointIconShow === false) n.pointIconShow = false;
+            else delete n.pointIconShow;
+          }
+          if ("pointIconScale" in patch) {
+            if (patch.pointIconScale === undefined) {
+              delete n.pointIconScale;
+            } else {
+              n.pointIconScale = patch.pointIconScale;
             }
           }
           return n;
@@ -1353,6 +1380,56 @@ export function AgentAbilityEditor({
                     );
                   })()}
                 </div>
+                {selected.shapeKind === "point" ? (
+                  <div className="space-y-2 rounded-md border border-cyan-900/35 bg-slate-950/45 p-2.5">
+                    <h4 className="text-[11px] font-semibold text-cyan-100/90">
+                      Ability icon (strat map)
+                    </h4>
+                    <p className="text-[10px] leading-snug text-violet-400/80">
+                      Valorant API icon for this slot when available. Off uses the colored dot
+                      only. Size is relative to the default point icon.
+                    </p>
+                    <label className="flex cursor-pointer items-center gap-2 text-[11px] text-violet-200/90">
+                      <input
+                        type="checkbox"
+                        checked={selected.pointIconShow !== false}
+                        onChange={(e) =>
+                          updateSelectedBlueprintMeta({
+                            pointIconShow: e.target.checked ? true : false,
+                          })
+                        }
+                        className="rounded border-violet-600/60"
+                      />
+                      Show ability icon
+                    </label>
+                    <label className="block text-[10px] text-violet-400/90">
+                      Icon size (
+                      {(selected.pointIconScale ?? 1).toFixed(2)}×)
+                      <input
+                        type="range"
+                        min={0.25}
+                        max={2.5}
+                        step={0.05}
+                        value={selected.pointIconScale ?? 1}
+                        onChange={(e) =>
+                          updateSelectedBlueprintMeta({
+                            pointIconScale: Number(e.target.value) || 1,
+                          })
+                        }
+                        className="mt-1 w-full accent-cyan-500"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="btn-secondary w-full py-1 text-[11px]"
+                      onClick={() =>
+                        updateSelectedBlueprintMeta({ pointIconScale: undefined })
+                      }
+                    >
+                      Reset icon size
+                    </button>
+                  </div>
+                ) : null}
                 <BlueprintGeometryFields
                   geometry={selected.geometry}
                   onChange={updateSelectedGeometry}

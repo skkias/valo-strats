@@ -14,6 +14,7 @@ import {
 } from "@/lib/map-geometry-scale";
 import { clientToSvgPoint } from "@/lib/svg-coords";
 import { clampPointToViewBox } from "@/lib/map-path";
+import { stratAnchorOverrideForBlueprint } from "@/lib/strat-blueprint-map-point";
 
 function round4(n: number): string {
   const r = Math.round(n * 10000) / 10000;
@@ -198,6 +199,7 @@ export function AbilityBlueprintMapPreview({
               rotationDeg={previewRotationDeg}
               pointerEvents="auto"
               abilityDisplayIconUrl={abilityDisplayIconUrl ?? null}
+              stratAnchorOverride={stratAnchorOverrideForBlueprint(blueprint)}
             />
           </g>
         ) : null}

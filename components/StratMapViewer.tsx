@@ -33,6 +33,7 @@ import {
 import { clientToSvgPoint } from "@/lib/svg-coords";
 import type { MapPoint, ViewBoxRect } from "@/lib/map-path";
 import { RopeOverlaySvg } from "@/components/RopeOverlaySvg";
+import { MAP_VIEW_VECTOR_STROKE_SCALE } from "@/lib/map-view-stroke-scale";
 
 /** Read-only map overlay rendering (aligned with `MapShapeEditor` colors). */
 const SPAWN_ATK_FILL = "#ff3e3e";
@@ -118,7 +119,7 @@ function GradeOverlaySvg({
     isCircleOverlay(sh) && sh.circle
       ? circleToGradeClosedPoints(sh.circle)
       : sh.points;
-  const sw = vbWidth * 0.0035;
+  const sw = vbWidth * 0.0035 * MAP_VIEW_VECTOR_STROKE_SCALE;
   const side = sh.gradeHighSide ?? 1;
   const lineStroke = "rgb(34,211,238)";
   const spikeFill = "rgba(34,211,238,0.92)";
@@ -205,7 +206,7 @@ function DoorwayOverlaySvg({
   vbWidth: number;
 }) {
   const pts = sh.points;
-  const swBase = vbWidth * 0.0038;
+  const swBase = vbWidth * 0.0038 * MAP_VIEW_VECTOR_STROKE_SCALE;
 
   if (pts.length === 0) return null;
   if (pts.length === 1) {
@@ -537,7 +538,7 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
 
   const annMarkerR = vb.width * 0.014;
   const labelFontSize = vb.width * 0.026;
-  const strokeOutBase = vb.width * 0.0022;
+  const strokeOutBase = vb.width * 0.0022 * MAP_VIEW_VECTOR_STROKE_SCALE;
 
   const toggleRow = (
     id: keyof StratMapLayerVisibility,
@@ -653,7 +654,7 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
                 fill="rgba(167,139,250,0.12)"
                 fillRule="evenodd"
                 stroke="rgb(167,139,250)"
-                strokeWidth={vb.width * 0.004}
+                strokeWidth={vb.width * 0.004 * MAP_VIEW_VECTOR_STROKE_SCALE}
                 strokeLinejoin="round"
                 pointerEvents="none"
               />
@@ -699,7 +700,7 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
                       r={c.r}
                       fill={poly.fill}
                       stroke={poly.stroke}
-                      strokeWidth={vbW * 0.003}
+                      strokeWidth={vbW * 0.003 * MAP_VIEW_VECTOR_STROKE_SCALE}
                       strokeLinejoin="round"
                     />
                   </g>
@@ -715,7 +716,7 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
                     d={d}
                     fill={poly.fill}
                     stroke={poly.stroke}
-                    strokeWidth={vbW * 0.003}
+                    strokeWidth={vbW * 0.003 * MAP_VIEW_VECTOR_STROKE_SCALE}
                     strokeLinejoin="round"
                     strokeDasharray={
                       sh.kind === "plant_site" ? "9 6" : undefined
@@ -753,7 +754,7 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
               {location_labels.map((l) => {
                 const fs = labelFontSize * l.size;
                 const pinR = annMarkerR * l.size * 0.55;
-                const strokeOut = fs * 0.08;
+                const strokeOut = fs * 0.08 * MAP_VIEW_VECTOR_STROKE_SCALE;
                 const fill = l.color;
                 const textOnlyGap = Math.max(
                   fs * 0.35,

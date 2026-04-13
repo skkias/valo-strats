@@ -229,6 +229,17 @@ function normalizeStratPlacementMode(raw: unknown): StratPlacementMode | undefin
     : undefined;
 }
 
+function normalizePointIconShow(raw: unknown): boolean | undefined {
+  if (raw === false) return false;
+  return undefined;
+}
+
+function normalizePointIconScale(raw: unknown): number | undefined {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return undefined;
+  return Math.min(3, Math.max(0.12, n));
+}
+
 export function normalizeAgentAbilityBlueprint(raw: unknown): AgentAbilityBlueprint | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
@@ -246,6 +257,12 @@ export function normalizeAgentAbilityBlueprint(raw: unknown): AgentAbilityBluepr
   const stratPlacementMode = normalizeStratPlacementMode(
     o.stratPlacementMode ?? o.strat_placement_mode,
   );
+  const pointIconShow = normalizePointIconShow(
+    o.pointIconShow ?? o.point_icon_show,
+  );
+  const pointIconScale = normalizePointIconScale(
+    o.pointIconScale ?? o.point_icon_scale,
+  );
   const base: AgentAbilityBlueprint = {
     id,
     slot,
@@ -256,6 +273,8 @@ export function normalizeAgentAbilityBlueprint(raw: unknown): AgentAbilityBluepr
   };
   if (origin) base.origin = origin;
   if (stratPlacementMode) base.stratPlacementMode = stratPlacementMode;
+  if (pointIconShow === false) base.pointIconShow = false;
+  if (pointIconScale !== undefined) base.pointIconScale = pointIconScale;
   return base;
 }
 

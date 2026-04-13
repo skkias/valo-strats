@@ -89,4 +89,13 @@ export interface AgentAbilityBlueprint {
    * Omitted → sensible default by shape (see `effectiveStratPlacementMode`).
    */
   stratPlacementMode?: StratPlacementMode;
+  /**
+   * Point shapes only: show Valorant API ability icon on the strat map when a URL exists.
+   * `false` = always use the colored dot. Default / omitted = show icon when available.
+   */
+  pointIconShow?: boolean;
+  /**
+   * Point shapes only: multiplies the on-map icon size in blueprint space (default `1`).
+   */
+  pointIconScale?: number;
 }

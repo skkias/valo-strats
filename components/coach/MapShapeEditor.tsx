@@ -63,6 +63,7 @@ import {
   insertPointOnEdge,
 } from "@/lib/point-segment";
 import { uploadMapReferenceImageAction } from "@/app/coach/map-actions";
+import { MAP_VIEW_VECTOR_STROKE_SCALE } from "@/lib/map-view-stroke-scale";
 import { RopeOverlaySvg } from "@/components/RopeOverlaySvg";
 import {
   AlertCircle,
@@ -444,7 +445,8 @@ function GradeOverlaySvg({
     isCircleOverlay(sh) && sh.circle
       ? circleToGradeClosedPoints(sh.circle)
       : sh.points;
-  const sw = vbWidth * 0.0035 * (highlight ? 1.35 : 1);
+  const sw =
+    vbWidth * 0.0035 * (highlight ? 1.35 : 1) * MAP_VIEW_VECTOR_STROKE_SCALE;
   const side = sh.gradeHighSide ?? 1;
   const lineStroke = highlight
     ? "rgb(207,250,254)"
@@ -542,7 +544,8 @@ function DoorwayOverlaySvg({
   highlight: boolean;
 }) {
   const pts = sh.points;
-  const swBase = vbWidth * 0.0038 * (highlight ? 1.2 : 1);
+  const swBase =
+    vbWidth * 0.0038 * (highlight ? 1.2 : 1) * MAP_VIEW_VECTOR_STROKE_SCALE;
 
   if (pts.length === 0) return null;
   if (pts.length === 1) {
@@ -2575,7 +2578,7 @@ export function MapShapeEditor({
                   fill="rgba(167,139,250,0.12)"
                   fillRule={outlineOuter.length >= 3 ? "evenodd" : undefined}
                   stroke="rgb(167,139,250)"
-                  strokeWidth={vb.width * 0.004}
+                  strokeWidth={vb.width * 0.004 * MAP_VIEW_VECTOR_STROKE_SCALE}
                   strokeLinejoin="round"
                   pointerEvents="none"
                 />
@@ -2591,7 +2594,10 @@ export function MapShapeEditor({
                     d={d}
                     fill="none"
                     stroke={hl ? "rgb(251,207,232)" : "rgb(244,114,182)"}
-                    strokeWidth={vb.width * (hl ? 0.0048 : 0.003)}
+                    strokeWidth={
+                      vb.width * (hl ? 0.0048 : 0.003) *
+                      MAP_VIEW_VECTOR_STROKE_SCALE
+                    }
                     strokeDasharray="6 4"
                     strokeLinejoin="round"
                     pointerEvents="none"
@@ -2611,7 +2617,7 @@ export function MapShapeEditor({
                       fill="rgba(244,114,182,0.2)"
                       fillRule={h.length >= 3 ? "evenodd" : undefined}
                       stroke="rgb(251,207,232)"
-                      strokeWidth={vb.width * 0.0045}
+                      strokeWidth={vb.width * 0.0045 * MAP_VIEW_VECTOR_STROKE_SCALE}
                       strokeLinejoin="round"
                       pointerEvents="none"
                     />
@@ -2687,7 +2693,12 @@ export function MapShapeEditor({
                           r={c.r}
                           fill={poly.fill}
                           stroke={poly.stroke}
-                          strokeWidth={vb.width * 0.003 * (hl ? 2.2 : 1)}
+                          strokeWidth={
+                            vb.width *
+                            0.003 *
+                            (hl ? 2.2 : 1) *
+                            MAP_VIEW_VECTOR_STROKE_SCALE
+                          }
                           pointerEvents="none"
                         />
                       </g>
@@ -2707,7 +2718,12 @@ export function MapShapeEditor({
                         d={d}
                         fill={poly.fill}
                         stroke={poly.stroke}
-                        strokeWidth={vb.width * 0.003 * (hl ? 2.2 : 1)}
+                        strokeWidth={
+                          vb.width *
+                          0.003 *
+                          (hl ? 2.2 : 1) *
+                          MAP_VIEW_VECTOR_STROKE_SCALE
+                        }
                         strokeLinejoin="round"
                         strokeDasharray={
                           sh.kind === "plant_site" ? "9 6" : undefined
