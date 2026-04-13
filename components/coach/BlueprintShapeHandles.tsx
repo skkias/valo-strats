@@ -221,16 +221,20 @@ export function BlueprintShapeHandles({
         <g style={{ pointerEvents: "auto" }} data-blueprint-handles>
           {handleEl(geom.x1, geom.y1, "ray-a", geom)}
           {handleEl(geom.x2, geom.y2, "ray-b", geom)}
+          {geom.curve
+            ? handleEl(geom.curve.cx, geom.curve.cy, "ray-c", geom)
+            : null}
         </g>
       );
     case "movement":
-    case "ricochet":
       return (
         <g style={{ pointerEvents: "auto" }} data-blueprint-handles>
           {handleEl(geom.ax, geom.ay, "mov-a", geom)}
           {handleEl(geom.bx, geom.by, "mov-b", geom)}
         </g>
       );
+    case "ricochet":
+      return null;
     case "cone":
       return (
         <g style={{ pointerEvents: "auto" }} data-blueprint-handles>
@@ -311,9 +315,11 @@ function computeDraggedGeometry(
     }
     case "ray": {
       if (handleId === "ray-a")
-        return { kind: "ray", x1: p.x, y1: p.y, x2: g.x2, y2: g.y2 };
+        return { ...g, x1: p.x, y1: p.y };
       if (handleId === "ray-b")
-        return { kind: "ray", x1: g.x1, y1: g.y1, x2: p.x, y2: p.y };
+        return { ...g, x2: p.x, y2: p.y };
+      if (handleId === "ray-c" && g.curve)
+        return { ...g, curve: { cx: p.x, cy: p.y } };
       return null;
     }
     case "movement": {

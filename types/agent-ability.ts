@@ -63,7 +63,23 @@ export type StratPlacementMode = "center" | "origin_direction";
 export type AgentAbilityGeometry =
   | { kind: "point"; x: number; y: number }
   | { kind: "circle"; cx: number; cy: number; r: number }
-  | { kind: "ray"; x1: number; y1: number; x2: number; y2: number }
+  | {
+      kind: "ray";
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      /**
+       * Optional quadratic control point for curved wall paths (e.g. Viper wall shaping).
+       * Omitted = straight segment.
+       */
+      curve?: { cx: number; cy: number };
+      /**
+       * Optional wall visual state on strat map (e.g. Viper wall toggled down/up).
+       * Omitted = default/up.
+       */
+      wallState?: "up" | "down";
+    }
   /**
    * Triangular wedge from origin: apex → left boundary → right boundary.
    * Filled triangle matches “flash cone” / trip cone visuals.

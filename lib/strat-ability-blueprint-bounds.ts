@@ -33,7 +33,13 @@ export function blueprintGeometryBounds(g: AgentAbilityGeometry): BBox {
         maxY: g.cy + g.r,
       };
     case "ray":
-      return addPoint(addPoint(empty(), g.x1, g.y1), g.x2, g.y2);
+      return g.curve
+        ? addPoint(
+            addPoint(addPoint(empty(), g.x1, g.y1), g.x2, g.y2),
+            g.curve.cx,
+            g.curve.cy,
+          )
+        : addPoint(addPoint(empty(), g.x1, g.y1), g.x2, g.y2);
     case "movement":
       return addPoint(addPoint(empty(), g.ax, g.ay), g.bx, g.by);
     case "ricochet":

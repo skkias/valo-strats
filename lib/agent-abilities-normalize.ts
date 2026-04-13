@@ -104,12 +104,23 @@ function normalizeGeometry(
     };
   }
   if (k === "ray" && shapeKind === "ray") {
+    const cRaw = o.curve;
+    const curve =
+      cRaw && typeof cRaw === "object"
+        ? {
+            cx: clamp(Number((cRaw as Record<string, unknown>).cx)),
+            cy: clamp(Number((cRaw as Record<string, unknown>).cy)),
+          }
+        : undefined;
+    const wallState = o.wallState === "down" ? "down" : o.wallState === "up" ? "up" : undefined;
     return {
       kind: "ray",
       x1: clamp(Number(o.x1)),
       y1: clamp(Number(o.y1)),
       x2: clamp(Number(o.x2)),
       y2: clamp(Number(o.y2)),
+      ...(curve ? { curve } : {}),
+      ...(wallState ? { wallState } : {}),
     };
   }
   if (
@@ -169,12 +180,28 @@ function normalizeGeometry(
     };
   }
   if (k === "ricochet" && shapeKind === "ricochet") {
+    const ax = 500;
+    const ay = 500;
+    const rawAx = Number(o.ax);
+    const rawAy = Number(o.ay);
+    const rawBx = Number(o.bx);
+    const rawBy = Number(o.by);
+    const dist = Math.max(
+      24,
+      Math.min(
+        800,
+        Math.hypot(
+          Number.isFinite(rawBx) ? rawBx - (Number.isFinite(rawAx) ? rawAx : ax) : 200,
+          Number.isFinite(rawBy) ? rawBy - (Number.isFinite(rawAy) ? rawAy : ay) : 0,
+        ),
+      ),
+    );
     return {
       kind: "ricochet",
-      ax: clamp(Number(o.ax)),
-      ay: clamp(Number(o.ay)),
-      bx: clamp(Number(o.bx)),
-      by: clamp(Number(o.by)),
+      ax,
+      ay,
+      bx: clamp(ax + dist),
+      by: ay,
     };
   }
   return null;
@@ -233,9 +260,9 @@ function defaultGeometry(kind: AgentAbilityShapeKind): AgentAbilityGeometry {
     case "ricochet":
       return {
         kind: "ricochet",
-        ax: 420,
+        ax: 500,
         ay: 500,
-        bx: 580,
+        bx: 700,
         by: 500,
       };
     default:

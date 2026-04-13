@@ -12,6 +12,9 @@ import {
 export function blueprintStratAnchor(
   blueprint: AgentAbilityBlueprint,
 ): { x: number; y: number } {
+  if (blueprint.geometry.kind === "ricochet") {
+    return { x: blueprint.geometry.ax, y: blueprint.geometry.ay };
+  }
   const o = blueprint.origin;
   if (
     o &&

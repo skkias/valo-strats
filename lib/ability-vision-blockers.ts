@@ -191,10 +191,63 @@ export function abilityVisionBlockersOnMap(
       ]);
       break;
     case "ray":
-      openSegments.push({
-        a: mapPt({ x: g.x1, y: g.y1 }, blueprint, mapX, mapY, effectiveVbWidth, rotationDeg),
-        b: mapPt({ x: g.x2, y: g.y2 }, blueprint, mapX, mapY, effectiveVbWidth, rotationDeg),
-      });
+      if (g.curve) {
+        const q0 = mapPt(
+          { x: g.x1, y: g.y1 },
+          blueprint,
+          mapX,
+          mapY,
+          effectiveVbWidth,
+          rotationDeg,
+        );
+        const q1 = mapPt(
+          { x: g.curve.cx, y: g.curve.cy },
+          blueprint,
+          mapX,
+          mapY,
+          effectiveVbWidth,
+          rotationDeg,
+        );
+        const q2 = mapPt(
+          { x: g.x2, y: g.y2 },
+          blueprint,
+          mapX,
+          mapY,
+          effectiveVbWidth,
+          rotationDeg,
+        );
+        const steps = 16;
+        let prev = q0;
+        for (let i = 1; i <= steps; i++) {
+          const t = i / steps;
+          const mt = 1 - t;
+          const p = {
+            x: mt * mt * q0.x + 2 * mt * t * q1.x + t * t * q2.x,
+            y: mt * mt * q0.y + 2 * mt * t * q1.y + t * t * q2.y,
+          };
+          openSegments.push({ a: prev, b: p });
+          prev = p;
+        }
+      } else {
+        openSegments.push({
+          a: mapPt(
+            { x: g.x1, y: g.y1 },
+            blueprint,
+            mapX,
+            mapY,
+            effectiveVbWidth,
+            rotationDeg,
+          ),
+          b: mapPt(
+            { x: g.x2, y: g.y2 },
+            blueprint,
+            mapX,
+            mapY,
+            effectiveVbWidth,
+            rotationDeg,
+          ),
+        });
+      }
       break;
     case "polyline":
       pushOpenChain(g.points);

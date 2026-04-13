@@ -152,12 +152,13 @@ function buildGeometry(
   if (kind === "ricochet" && pts.length >= 2) {
     const a = pts[0]!;
     const b = pts[1]!;
+    const dist = Math.max(24, Math.min(800, Math.hypot(b.x - a.x, b.y - a.y)));
     return {
       kind: "ricochet",
-      ax: a.x,
-      ay: a.y,
-      bx: b.x,
-      by: b.y,
+      ax: 500,
+      ay: 500,
+      bx: 500 + dist,
+      by: 500,
     };
   }
   if (kind === "cone" && pts.length >= 3) {
@@ -382,19 +383,27 @@ function AbilityShapePreview({
         </g>
       );
     case "ray":
-      return (
-        <g opacity={op}>
-          <line
-            x1={g.x1}
-            y1={g.y1}
-            x2={g.x2}
-            y2={g.y2}
-            stroke={stroke}
-            strokeWidth={sw * 1.8}
-            strokeLinecap="round"
-          />
-        </g>
-      );
+      {
+        const wallOpacity = g.wallState === "down" ? op * 0.42 : op;
+        const wallDash =
+          g.wallState === "down" ? `${VB * 0.012} ${VB * 0.012}` : undefined;
+        const d = g.curve
+          ? `M ${g.x1} ${g.y1} Q ${g.curve.cx} ${g.curve.cy} ${g.x2} ${g.y2}`
+          : `M ${g.x1} ${g.y1} L ${g.x2} ${g.y2}`;
+        return (
+          <g opacity={wallOpacity}>
+            <path
+              d={d}
+              fill="none"
+              stroke={stroke}
+              strokeWidth={sw * 1.8}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray={wallDash}
+            />
+          </g>
+        );
+      }
     case "cone":
       return (
         <g opacity={op}>
@@ -673,10 +682,29 @@ export function AgentAbilityEditor({
   const themeColor = normalizeAgentThemeColor(agent.theme_color);
   const initial = useMemo(
     () =>
-      (agent.abilities_blueprint ?? []).map((b) => ({
-        ...b,
-        color: themeColor,
-      })),
+      (agent.abilities_blueprint ?? []).map((b) => {
+        if (b.shapeKind !== "ricochet" || b.geometry.kind !== "ricochet") {
+          return { ...b, color: themeColor };
+        }
+        const dist = Math.max(
+          24,
+          Math.min(800, Math.hypot(b.geometry.bx - b.geometry.ax, b.geometry.by - b.geometry.ay)),
+        );
+        return {
+          ...b,
+          color: themeColor,
+          geometry: {
+            kind: "ricochet" as const,
+            ax: 500,
+            ay: 500,
+            bx: 500 + dist,
+            by: 500,
+          },
+          origin: { x: 500, y: 500 },
+          stratAttachToAgent: true,
+          stratPlacementMode: "origin_direction" as const,
+        };
+      }),
     [agent.abilities_blueprint, themeColor],
   );
   const [abilities, setAbilities] = useState<AgentAbilityBlueprint[]>(initial);
@@ -874,6 +902,7 @@ export function AgentAbilityEditor({
       if (placement.shapeKind === "ricochet") {
         next.stratAttachToAgent = true;
         next.stratPlacementMode = "origin_direction";
+        next.origin = { x: 500, y: 500 };
       }
       setAbilities((a) => [...a, next]);
       setSelectedId(next.id);
@@ -918,7 +947,16 @@ export function AgentAbilityEditor({
       setAbilities((list) =>
         list.map((b) =>
           b.id === selectedId
-            ? { ...b, geometry: geo, shapeKind: geo.kind }
+            ? geo.kind === "ricochet"
+              ? {
+                  ...b,
+                  geometry: geo,
+                  shapeKind: geo.kind,
+                  origin: { x: 500, y: 500 },
+                  stratAttachToAgent: true,
+                  stratPlacementMode: "origin_direction",
+                }
+              : { ...b, geometry: geo, shapeKind: geo.kind }
             : b,
         ),
       );
@@ -1020,7 +1058,35 @@ export function AgentAbilityEditor({
     setSaving(true);
     setBanner(null);
     const theme = normalizeAgentThemeColor(themeColorDraft);
-    const themedAbilities = abilities.map((b) => ({ ...b, color: theme }));
+    const themedAbilities = abilities.map((b) => {
+      if (b.shapeKind !== "ricochet" || b.geometry.kind !== "ricochet") {
+        return { ...b, color: theme };
+      }
+      const dist = Math.max(
+        24,
+        Math.min(
+          800,
+          Math.hypot(
+            b.geometry.bx - b.geometry.ax,
+            b.geometry.by - b.geometry.ay,
+          ),
+        ),
+      );
+      return {
+        ...b,
+        color: theme,
+        geometry: {
+          kind: "ricochet" as const,
+          ax: 500,
+          ay: 500,
+          bx: 500 + dist,
+          by: 500,
+        },
+        origin: { x: 500, y: 500 },
+        stratAttachToAgent: true,
+        stratPlacementMode: "origin_direction" as const,
+      };
+    });
     const { error } = await saveAgentAbilitiesBlueprintAction(
       agent.id,
       themedAbilities,
@@ -1690,62 +1756,78 @@ export function AgentAbilityEditor({
                     const a = blueprintStratAnchor(selected);
                     const ox = selected.origin?.x ?? a.x;
                     const oy = selected.origin?.y ?? a.y;
-                    const mode = effectiveStratPlacementMode(selected);
+                    const isRicochet = selected.shapeKind === "ricochet";
+                    const mode = isRicochet
+                      ? "origin_direction"
+                      : effectiveStratPlacementMode(selected);
                     return (
                       <>
-                        <div className="grid grid-cols-2 gap-2">
-                          <label className="block text-[10px] text-violet-400/90">
-                            Origin X (bp)
-                            <input
-                              type="number"
-                              step="any"
-                              value={Math.round(ox * 1000) / 1000}
-                              onChange={(e) => {
-                                const v = Number(e.target.value);
-                                if (Number.isFinite(v)) {
-                                  updateSelectedBlueprintMeta({
-                                    origin: { x: v, y: oy },
-                                  });
-                                }
-                              }}
-                              className="input-field mt-0.5 w-full font-mono text-xs"
-                            />
-                          </label>
-                          <label className="block text-[10px] text-violet-400/90">
-                            Origin Y (bp)
-                            <input
-                              type="number"
-                              step="any"
-                              value={Math.round(oy * 1000) / 1000}
-                              onChange={(e) => {
-                                const v = Number(e.target.value);
-                                if (Number.isFinite(v)) {
-                                  updateSelectedBlueprintMeta({
-                                    origin: { x: ox, y: v },
-                                  });
-                                }
-                              }}
-                              className="input-field mt-0.5 w-full font-mono text-xs"
-                            />
-                          </label>
-                        </div>
-                        <button
-                          type="button"
-                          className="btn-secondary w-full py-1 text-[11px]"
-                          onClick={() => updateSelectedBlueprintMeta({ origin: undefined })}
-                        >
-                          Reset origin to bbox center
-                        </button>
+                        {!isRicochet ? (
+                          <>
+                            <div className="grid grid-cols-2 gap-2">
+                              <label className="block text-[10px] text-violet-400/90">
+                                Origin X (bp)
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value={Math.round(ox * 1000) / 1000}
+                                  onChange={(e) => {
+                                    const v = Number(e.target.value);
+                                    if (Number.isFinite(v)) {
+                                      updateSelectedBlueprintMeta({
+                                        origin: { x: v, y: oy },
+                                      });
+                                    }
+                                  }}
+                                  className="input-field mt-0.5 w-full font-mono text-xs"
+                                />
+                              </label>
+                              <label className="block text-[10px] text-violet-400/90">
+                                Origin Y (bp)
+                                <input
+                                  type="number"
+                                  step="any"
+                                  value={Math.round(oy * 1000) / 1000}
+                                  onChange={(e) => {
+                                    const v = Number(e.target.value);
+                                    if (Number.isFinite(v)) {
+                                      updateSelectedBlueprintMeta({
+                                        origin: { x: ox, y: v },
+                                      });
+                                    }
+                                  }}
+                                  className="input-field mt-0.5 w-full font-mono text-xs"
+                                />
+                              </label>
+                            </div>
+                            <button
+                              type="button"
+                              className="btn-secondary w-full py-1 text-[11px]"
+                              onClick={() => updateSelectedBlueprintMeta({ origin: undefined })}
+                            >
+                              Reset origin to bbox center
+                            </button>
+                          </>
+                        ) : (
+                          <p className="rounded border border-violet-800/45 bg-slate-950/55 px-2 py-1.5 text-[10px] leading-snug text-violet-300/80">
+                            Ricochet uses a fixed local origin and always launches from the
+                            agent token on strat maps.
+                          </p>
+                        )}
                         <label className="block text-[10px] text-violet-400/90">
                           Placement on strats
                           <select
                             value={mode}
-                            onChange={(e) =>
-                              updateSelectedBlueprintMeta({
-                                stratPlacementMode: e.target
-                                  .value as StratPlacementMode,
-                              })
+                            onChange={
+                              isRicochet
+                                ? undefined
+                                : (e) =>
+                                    updateSelectedBlueprintMeta({
+                                      stratPlacementMode: e.target
+                                        .value as StratPlacementMode,
+                                    })
                             }
+                            disabled={isRicochet}
                             className="input-field mt-0.5 w-full text-xs"
                           >
                             <option value="center">
@@ -1761,14 +1843,22 @@ export function AgentAbilityEditor({
                             <label className="mt-2 flex cursor-pointer items-center gap-2 text-[11px] text-violet-200/90">
                               <input
                                 type="checkbox"
-                                checked={selected.stratAttachToAgent === true}
-                                onChange={(e) =>
-                                  updateSelectedBlueprintMeta({
-                                    stratAttachToAgent: e.target.checked
-                                      ? true
-                                      : undefined,
-                                  })
+                                checked={
+                                  isRicochet
+                                    ? true
+                                    : selected.stratAttachToAgent === true
                                 }
+                                onChange={
+                                  isRicochet
+                                    ? undefined
+                                    : (e) =>
+                                        updateSelectedBlueprintMeta({
+                                          stratAttachToAgent: e.target.checked
+                                            ? true
+                                            : undefined,
+                                        })
+                                }
+                                disabled={isRicochet}
                                 className="rounded border-violet-600/60"
                               />
                               Attach to agent token on strats

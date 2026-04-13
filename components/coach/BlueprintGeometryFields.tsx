@@ -161,11 +161,8 @@ export function BlueprintGeometryFields({
                 value={g.x1}
                 onChange={(e) =>
                   onChange({
-                    kind: "ray",
+                    ...g,
                     x1: clampCoord(Number.parseFloat(e.target.value)),
-                    y1: g.y1,
-                    x2: g.x2,
-                    y2: g.y2,
                   })
                 }
                 className={fieldCls()}
@@ -179,11 +176,8 @@ export function BlueprintGeometryFields({
                 value={g.y1}
                 onChange={(e) =>
                   onChange({
-                    kind: "ray",
-                    x1: g.x1,
+                    ...g,
                     y1: clampCoord(Number.parseFloat(e.target.value)),
-                    x2: g.x2,
-                    y2: g.y2,
                   })
                 }
                 className={fieldCls()}
@@ -202,11 +196,8 @@ export function BlueprintGeometryFields({
                 value={g.x2}
                 onChange={(e) =>
                   onChange({
-                    kind: "ray",
-                    x1: g.x1,
-                    y1: g.y1,
+                    ...g,
                     x2: clampCoord(Number.parseFloat(e.target.value)),
-                    y2: g.y2,
                   })
                 }
                 className={fieldCls()}
@@ -220,10 +211,7 @@ export function BlueprintGeometryFields({
                 value={g.y2}
                 onChange={(e) =>
                   onChange({
-                    kind: "ray",
-                    x1: g.x1,
-                    y1: g.y1,
-                    x2: g.x2,
+                    ...g,
                     y2: clampCoord(Number.parseFloat(e.target.value)),
                   })
                 }
@@ -231,10 +219,97 @@ export function BlueprintGeometryFields({
               />
             </label>
           </Row>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <label className="block text-[11px] text-violet-400/90">
+              Path shape
+              <select
+                value={g.curve ? "curved" : "straight"}
+                onChange={(e) => {
+                  const mode = e.target.value;
+                  if (mode === "curved") {
+                    onChange({
+                      ...g,
+                      curve: {
+                        cx: (g.x1 + g.x2) / 2,
+                        cy: (g.y1 + g.y2) / 2,
+                      },
+                    });
+                  } else {
+                    const { curve: _c, ...rest } = g;
+                    onChange(rest);
+                  }
+                }}
+                className={fieldCls()}
+              >
+                <option value="straight">Straight</option>
+                <option value="curved">Curved</option>
+              </select>
+            </label>
+            <label className="block text-[11px] text-violet-400/90">
+              Wall state (Viper)
+              <select
+                value={g.wallState ?? "up"}
+                onChange={(e) =>
+                  onChange({
+                    ...g,
+                    wallState: e.target.value === "down" ? "down" : "up",
+                  })
+                }
+                className={fieldCls()}
+              >
+                <option value="up">Up</option>
+                <option value="down">Down</option>
+              </select>
+            </label>
+          </div>
+          {g.curve ? (
+            <>
+              <p className="mb-1 mt-2 text-[10px] uppercase tracking-wide text-violet-500/80">
+                Curve control
+              </p>
+              <Row>
+                <label className="block text-[11px] text-violet-400/90">
+                  cx
+                  <input
+                    type="number"
+                    step="any"
+                    value={g.curve.cx}
+                    onChange={(e) =>
+                      onChange({
+                        ...g,
+                        curve: {
+                          cx: clampCoord(Number.parseFloat(e.target.value)),
+                          cy: g.curve?.cy ?? (g.y1 + g.y2) / 2,
+                        },
+                      })
+                    }
+                    className={fieldCls()}
+                  />
+                </label>
+                <label className="block text-[11px] text-violet-400/90">
+                  cy
+                  <input
+                    type="number"
+                    step="any"
+                    value={g.curve.cy}
+                    onChange={(e) =>
+                      onChange({
+                        ...g,
+                        curve: {
+                          cx: g.curve?.cx ?? (g.x1 + g.x2) / 2,
+                          cy: clampCoord(Number.parseFloat(e.target.value)),
+                        },
+                      })
+                    }
+                    className={fieldCls()}
+                  />
+                </label>
+              </Row>
+            </>
+          ) : null}
         </>
       );
     case "movement":
-    case "ricochet":
       return (
         <>
           <p className="mb-1 text-[10px] uppercase tracking-wide text-violet-500/80">
@@ -321,6 +396,42 @@ export function BlueprintGeometryFields({
           </Row>
         </>
       );
+    case "ricochet": {
+      const dist = Math.hypot(g.bx - g.ax, g.by - g.ay);
+      const clampedDist = Math.max(24, Math.min(800, dist));
+      return (
+        <div className="space-y-2">
+          <p className="text-[11px] leading-snug text-violet-400/90">
+            Ricochet path uses a fixed local origin and follows agent-facing rotation on the
+            strat map. Adjust travel distance only.
+          </p>
+          <label className="block text-[11px] text-violet-400/90">
+            Max travel distance (blueprint units)
+            <input
+              type="number"
+              min={24}
+              max={800}
+              step="any"
+              value={Math.round(clampedDist * 1000) / 1000}
+              onChange={(e) => {
+                const next = Math.max(
+                  24,
+                  Math.min(800, Number.parseFloat(e.target.value) || clampedDist),
+                );
+                onChange({
+                  kind: "ricochet",
+                  ax: 500,
+                  ay: 500,
+                  bx: 500 + next,
+                  by: 500,
+                });
+              }}
+              className={fieldCls()}
+            />
+          </label>
+        </div>
+      );
+    }
     case "cone":
       return (
         <>

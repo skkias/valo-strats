@@ -223,20 +223,30 @@ export function StratAbilityBlueprintSvg({
       );
       break;
     case "ray":
-      inner = (
-        <g opacity={op} style={{ pointerEvents }}>
-          <line
-            x1={g.x1}
-            y1={g.y1}
-            x2={g.x2}
-            y2={g.y2}
-            stroke={stroke}
-            strokeLinecap="round"
-            {...commonStroke}
-            strokeWidth={swMap * 1.5}
-          />
-        </g>
-      );
+      {
+        const wallOpacity = g.wallState === "down" ? op * 0.42 : op;
+        const wallDash =
+          g.wallState === "down"
+            ? `${vbWidth * 0.01 * MAP_BLUEPRINT_STROKE_SCALE} ${vbWidth * 0.01 * MAP_BLUEPRINT_STROKE_SCALE}`
+            : undefined;
+        const d = g.curve
+          ? `M ${g.x1} ${g.y1} Q ${g.curve.cx} ${g.curve.cy} ${g.x2} ${g.y2}`
+          : `M ${g.x1} ${g.y1} L ${g.x2} ${g.y2}`;
+        inner = (
+          <g opacity={wallOpacity} style={{ pointerEvents }}>
+            <path
+              d={d}
+              fill="none"
+              stroke={stroke}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray={wallDash}
+              {...commonStroke}
+              strokeWidth={swMap * 1.5}
+            />
+          </g>
+        );
+      }
       break;
     case "cone":
       if (
