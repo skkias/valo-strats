@@ -29,6 +29,14 @@ export async function persistMapUpdate(
       JSON.stringify(payload.extra_paths),
     ) as unknown;
   }
+  if (payload.extra_paths_def !== undefined) {
+    row.extra_paths_def =
+      payload.extra_paths_def === null
+        ? null
+        : (JSON.parse(
+            JSON.stringify(payload.extra_paths_def),
+          ) as unknown);
+  }
   if (payload.editor_meta !== undefined) {
     row.editor_meta = JSON.parse(
       JSON.stringify(payload.editor_meta),

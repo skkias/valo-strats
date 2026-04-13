@@ -106,6 +106,12 @@ export interface GameMap {
   /** Obstacles, elevation, walls, and grade lines (JSON in DB). */
   extra_paths: MapOverlayShape[];
   /**
+   * Defense-frame overlays (horizontal midline mirror of {@link extra_paths}), saved by
+   * the coach map editor. `null` when the row predates this column — viewers derive def
+   * layers from attack-side data until the map is saved again.
+   */
+  extra_paths_def: MapOverlayShape[] | null;
+  /**
    * Reference image toggle, spawn pins, and text labels (attack-side viewBox coords).
    */
   editor_meta: MapEditorMeta;
@@ -169,6 +175,14 @@ export interface MapEditorMeta {
   ghost_other_floor?: boolean;
   spawn_markers: MapSpawnMarker[];
   location_labels: MapLocationLabel[];
+  /**
+   * Spawns in defense-frame coords (mirror of {@link spawn_markers}); empty until coach save.
+   */
+  spawn_markers_def: MapSpawnMarker[];
+  /**
+   * Labels in defense-frame coords (mirror of {@link location_labels}); empty until coach save.
+   */
+  location_labels_def: MapLocationLabel[];
 }
 
 /** Coach map editor → `public.maps` update (partial row). */
@@ -180,5 +194,6 @@ export type MapUpdatePayload = {
   path_atk?: string | null;
   path_def?: string | null;
   extra_paths?: MapOverlayShape[];
+  extra_paths_def?: MapOverlayShape[] | null;
   editor_meta?: MapEditorMeta;
 };

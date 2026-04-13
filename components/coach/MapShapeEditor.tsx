@@ -24,6 +24,7 @@ import type {
 } from "@/types/catalog";
 import { defaultMapTransform } from "@/lib/map-transform";
 import { parseViewBox } from "@/lib/view-box";
+import { mirrorAttackFrameLayersToDefFrame } from "@/lib/map-def-frame-layers";
 import {
   alignPointsHorizontal,
   alignPointsVertical,
@@ -2189,6 +2190,19 @@ export function MapShapeEditor({
       outlineReady
         ? overlays.map((s) => sanitizeOverlayForSave(s, outlineOuter, outlineHoles))
         : overlays;
+    const vbParsed = parseViewBox(viewBox);
+    const vbRect: ViewBoxRect = {
+      minX: vbParsed.minX,
+      minY: vbParsed.minY,
+      width: vbParsed.width,
+      height: vbParsed.height,
+    };
+    const defLayers = mirrorAttackFrameLayersToDefFrame(
+      vbRect,
+      sanitizedOverlays,
+      editorMeta.spawn_markers,
+      editorMeta.location_labels,
+    );
     const payload = {
       reference_image_url: refUrl,
       image_transform: transform,
@@ -2196,7 +2210,12 @@ export function MapShapeEditor({
       path_atk: pathAtk,
       path_def: pathDef,
       extra_paths: sanitizedOverlays,
-      editor_meta: editorMeta,
+      extra_paths_def: defLayers.overlays,
+      editor_meta: {
+        ...editorMeta,
+        spawn_markers_def: defLayers.spawn_markers,
+        location_labels_def: defLayers.location_labels,
+      },
     };
     try {
       const res = await fetch(

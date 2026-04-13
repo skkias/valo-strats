@@ -34,10 +34,15 @@ export async function listMaps(): Promise<GameMap[]> {
   return (data ?? []).map((row) => {
     const r = row as Record<string, unknown>;
     const extraRaw = r.extra_paths ?? r.extraPaths;
+    const extraDefRaw = r.extra_paths_def ?? r.extraPathsDef;
     return {
       ...(row as GameMap),
       image_transform: normalizeMapTransform(r.image_transform),
       extra_paths: normalizeExtraPaths(extraRaw),
+      extra_paths_def:
+        extraDefRaw === null || extraDefRaw === undefined
+          ? null
+          : normalizeExtraPaths(extraDefRaw),
       editor_meta: normalizeEditorMeta(r.editor_meta),
     };
   });
@@ -72,10 +77,15 @@ export async function getMapById(id: string): Promise<GameMap | null> {
   if (!data) return null;
   const r = data as Record<string, unknown>;
   const extraRaw = r.extra_paths ?? r.extraPaths;
+  const extraDefRaw = r.extra_paths_def ?? r.extraPathsDef;
   return {
     ...(data as GameMap),
     image_transform: normalizeMapTransform(r.image_transform),
     extra_paths: normalizeExtraPaths(extraRaw),
+    extra_paths_def:
+      extraDefRaw === null || extraDefRaw === undefined
+        ? null
+        : normalizeExtraPaths(extraDefRaw),
     editor_meta: normalizeEditorMeta(r.editor_meta),
   };
 }

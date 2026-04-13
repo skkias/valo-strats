@@ -59,6 +59,8 @@ export function defaultEditorMeta(): MapEditorMeta {
     ghost_other_floor: true,
     spawn_markers: [],
     location_labels: [],
+    spawn_markers_def: [],
+    location_labels_def: [],
   };
 }
 
@@ -88,7 +90,7 @@ export function normalizeEditorMeta(raw: unknown): MapEditorMeta {
     for (const x of o.spawn_markers) {
       if (!x || typeof x !== "object") continue;
       const m = x as Record<string, unknown>;
-      let id = typeof m.id === "string" && m.id ? m.id : newId();
+      const id = typeof m.id === "string" && m.id ? m.id : newId();
       const sx = m.x;
       const sy = m.y;
       const side = m.side === "def" ? "def" : "atk";
@@ -103,7 +105,7 @@ export function normalizeEditorMeta(raw: unknown): MapEditorMeta {
     for (const x of o.location_labels) {
       if (!x || typeof x !== "object") continue;
       const m = x as Record<string, unknown>;
-      let id = typeof m.id === "string" && m.id ? m.id : newId();
+      const id = typeof m.id === "string" && m.id ? m.id : newId();
       const text =
         typeof m.text === "string" && m.text.trim() ? m.text.trim() : "Label";
       const lx = m.x;
@@ -124,5 +126,49 @@ export function normalizeEditorMeta(raw: unknown): MapEditorMeta {
     }
   }
   d.location_labels = labels;
+
+  const spawnsDef: MapSpawnMarker[] = [];
+  if (Array.isArray(o.spawn_markers_def)) {
+    for (const x of o.spawn_markers_def) {
+      if (!x || typeof x !== "object") continue;
+      const m = x as Record<string, unknown>;
+      const id = typeof m.id === "string" && m.id ? m.id : newId();
+      const sx = m.x;
+      const sy = m.y;
+      const side = m.side === "def" ? "def" : "atk";
+      if (typeof sx === "number" && typeof sy === "number") {
+        spawnsDef.push({ id, side, x: sx, y: sy });
+      }
+    }
+  }
+  d.spawn_markers_def = spawnsDef;
+
+  const labelsDef: MapLocationLabel[] = [];
+  if (Array.isArray(o.location_labels_def)) {
+    for (const x of o.location_labels_def) {
+      if (!x || typeof x !== "object") continue;
+      const m = x as Record<string, unknown>;
+      const id = typeof m.id === "string" && m.id ? m.id : newId();
+      const text =
+        typeof m.text === "string" && m.text.trim() ? m.text.trim() : "Label";
+      const lx = m.x;
+      const ly = m.y;
+      if (typeof lx === "number" && typeof ly === "number") {
+        labelsDef.push({
+          id,
+          x: lx,
+          y: ly,
+          text,
+          style: normalizeLabelStyle(m.style),
+          color: normalizeLabelColor(m.color),
+          size: clampLabelSize(m.size),
+          text_anchor: normalizeLabelTextAnchor(m.text_anchor),
+          text_rotation_deg: normalizeLabelTextRotationDeg(m.text_rotation_deg),
+        });
+      }
+    }
+  }
+  d.location_labels_def = labelsDef;
+
   return d;
 }

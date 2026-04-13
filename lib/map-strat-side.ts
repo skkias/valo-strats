@@ -3,38 +3,30 @@ import type { StratSide } from "@/types/strat";
 import { normalizeEditorMeta } from "@/lib/map-editor-meta";
 
 /**
- * Map shape editor stores traced geometry as `path_atk` (purple). `path_def` is the auto
- * horizontal midline mirror. Strat map viewer: horizontal-mirror overlays/spawns/labels/pins
- * from `path_atk` space when the row says **Yes**:
- *
- * | Invert meaning | Strat side | Horizontal mirror |
- * |----------------|------------|---------------------|
- * | No             | Attack     | **Yes**             |
- * | No             | Defense    | **No**              |
- * | Yes            | Attack     | **No**              |
- * | Yes            | Defense    | **Yes**             |
+ * Which “recording” of the map matches this strat side name: attack-side editor frame
+ * (`path_atk`, attack layers) vs defense frame (`path_def`, mirrored layers). Inversion
+ * swaps which name uses which recording: `(side === "atk") !== inverted`.
  */
-export function stratMapViewerShowsMirroredOutline(
+export function stratUsesAttackEditorFrame(
   map: GameMap,
   side: StratSide,
 ): boolean {
   const inv = normalizeEditorMeta(map.editor_meta).side_meaning_inverted === true;
-  return (!inv && side === "atk") || (inv && side === "def");
+  return (side === "atk") !== inv;
 }
 
 /**
- * Territory outline: `path_def` when {@link stratMapViewerShowsMirroredOutline} (same rows
- * as **Yes** in the table); otherwise `path_atk`.
+ * Territory outline: `path_atk` in the attack editor frame, `path_def` in the defense frame.
  */
 export function outlinePathForStratSide(
   map: GameMap,
   side: "atk" | "def",
 ): string | null {
-  const useDef = stratMapViewerShowsMirroredOutline(map, side);
+  const atkFrame = stratUsesAttackEditorFrame(map, side);
   const atk = map.path_atk?.trim() ? map.path_atk : null;
   const def = map.path_def?.trim() ? map.path_def : null;
-  if (useDef) return def ?? atk;
-  return atk ?? def;
+  if (atkFrame) return atk ?? def;
+  return def ?? atk;
 }
 
 /** Territory outline for the strat viewer (same as {@link outlinePathForStratSide}). */
