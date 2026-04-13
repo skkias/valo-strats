@@ -1,7 +1,6 @@
 import type { GameMap } from "@/types/catalog";
 import type { StratSide } from "@/types/strat";
 import {
-  defenseRingsFromAttack,
   flipPointsThroughViewBoxCenter,
   parsePathToRings,
   ringsToPathD,
@@ -28,9 +27,9 @@ export function outlinePathForStratSide(
 }
 
 /**
- * Outline for the strat viewer: matches MapShapeEditor “Swap sides” (180° about center) for
- * defense on normal maps; uses saved `path_def` (horizontal mirror) when invert-meaning
- * attack strats reference the mirrored ring.
+ * Outline for the strat viewer: 180° about the viewBox center whenever the strat side is
+ * the “mirrored” one (defense on normal maps, attack when invert-meaning is on), always
+ * derived from `path_atk` so outline + overlays + pins stay one consistent frame.
  */
 export function outlinePathForStratDisplay(
   map: GameMap,
@@ -41,16 +40,6 @@ export function outlinePathForStratDisplay(
   if (!atk) return null;
 
   if (mode === "none") return atk;
-  if (mode === "horizontal") {
-    if (map.path_def?.trim()) return map.path_def;
-    const vb = viewBoxRectFromMap(map);
-    const rings = parsePathToRings(atk);
-    const outer = rings[0] ?? [];
-    const holes = rings.slice(1);
-    if (outer.length < 3) return atk;
-    const d = defenseRingsFromAttack(vb, outer, holes);
-    return ringsToPathD(d.outer, d.holes);
-  }
 
   const vb = viewBoxRectFromMap(map);
   const rings = parsePathToRings(atk);

@@ -1,6 +1,5 @@
 import type { GameMap } from "@/types/catalog";
 import {
-  flipPointsOverHorizontalMidline,
   flipPointsThroughViewBoxCenter,
   type MapPoint,
   type ViewBoxRect,
@@ -16,14 +15,12 @@ function stratStoredAttackPointToDisplay(
 ): MapPoint {
   const mode = stratSideDisplayFlip(map, side);
   if (mode === "none") return p;
-  if (mode === "center") return flipPointsThroughViewBoxCenter(vb, [p])[0]!;
-  return flipPointsOverHorizontalMidline(vb, [p])[0]!;
+  return flipPointsThroughViewBoxCenter(vb, [p])[0]!;
 }
 
 /**
  * Stage pins are stored in attack-side viewBox coordinates. Display matches
- * {@link stratMapDisplayData} (center flip for defense on normal maps, horizontal for
- * invert-meaning attack). Reflections are self-inverse for undo.
+ * {@link stratMapDisplayData} (180° flip when showing the mirrored strat side).
  */
 export function stratStagePinForDisplay(
   vb: ViewBoxRect,

@@ -3,16 +3,16 @@ import type { StratSide } from "@/types/strat";
 import { normalizeEditorMeta } from "@/lib/map-editor-meta";
 
 /**
- * How stored attack-side geometry is shown for a strat side.
+ * Whether strat map layers should use point reflection through the viewBox center (180°),
+ * same as MapShapeEditor “Swap sides”.
  *
- * - **center** — point reflection through the viewBox center (180°), same as MapShapeEditor
- *   “Swap sides”. Used for **defense** strats when atk/def meaning is normal: aligns outline
- *   and overlays the way users expect vs the purple `path_atk` editor view.
- * - **horizontal** — reflection across the horizontal midline (`path_def` = defense ring on
- *   save). Used when **Invert atk/def meaning** is on and the strat side is **attack**:
- *   game attack territory is the mirrored ring (`path_def`), not `path_atk`.
+ * That applies whenever the strat side is the “mirrored” one relative to stored `path_atk`
+ * geometry — including **defense** on normal maps and **attack** when
+ * `side_meaning_inverted` is true (Split-style label swap). One transform keeps Pearl and
+ * inverted maps consistent; we do not use a separate horizontal-mirror path for inverted
+ * attack (that mixed `path_def` with center-flipped pins and looked wrong).
  */
-export type StratSideDisplayFlip = "none" | "center" | "horizontal";
+export type StratSideDisplayFlip = "none" | "center";
 
 export function stratSideDisplayFlip(
   map: GameMap,
@@ -22,5 +22,5 @@ export function stratSideDisplayFlip(
   const meaningInverted = em.side_meaning_inverted === true;
   const shouldFlipForSide = meaningInverted ? side === "atk" : side === "def";
   if (!shouldFlipForSide) return "none";
-  return meaningInverted ? "horizontal" : "center";
+  return "center";
 }
