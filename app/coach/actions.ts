@@ -4,10 +4,16 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { COACH_ACCESS_COOKIE, computeCoachAccessToken } from "@/lib/coach-token";
 import { verifyDocsPassword } from "@/lib/docs-token";
+import {
+  clearLoginFailures,
+  readLoginThrottleStatus,
+  registerLoginFailure,
+} from "@/lib/login-throttle";
 
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
 /** Covers `/coach/*` including `/coach/api/*` (map save). */
 const COOKIE_PATH = "/coach";
+const THROTTLE_COOKIE = "coach_login_failures";
 
 export async function unlockCoachForm(
   _prev: { error: string } | null,
@@ -21,14 +27,42 @@ export async function unlockCoachForm(
   if (!expected?.length) {
     return { error: "Coach password is not configured." };
   }
+  const jar = await cookies();
+  const throttle = await readLoginThrottleStatus({
+    jar,
+    cookieName: THROTTLE_COOKIE,
+  });
+  if (throttle.locked) {
+    const mins = Math.ceil(throttle.retryAfterSeconds / 60);
+    return {
+      error: `Too many failed attempts. Try again in about ${mins} minute${mins === 1 ? "" : "s"}.`,
+    };
+  }
 
   const ok = await verifyDocsPassword(password, expected);
   if (!ok) {
-    return { error: "Invalid password." };
+    const fail = await registerLoginFailure({
+      jar,
+      cookieName: THROTTLE_COOKIE,
+      path: COOKIE_PATH,
+    });
+    if (fail.lockedNow) {
+      const mins = Math.ceil(fail.retryAfterSeconds / 60);
+      return {
+        error: `Too many failed attempts. Try again in about ${mins} minute${mins === 1 ? "" : "s"}.`,
+      };
+    }
+    return {
+      error: `Invalid password. ${fail.attemptsRemaining} attempt${fail.attemptsRemaining === 1 ? "" : "s"} remaining before a cooldown.`,
+    };
   }
 
   const token = await computeCoachAccessToken(expected);
-  const jar = await cookies();
+  await clearLoginFailures({
+    jar,
+    cookieName: THROTTLE_COOKIE,
+    path: COOKIE_PATH,
+  });
   jar.set(COACH_ACCESS_COOKIE, token, {
     httpOnly: true,
     sameSite: "lax",

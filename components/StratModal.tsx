@@ -15,6 +15,11 @@ import type { StratAgentTokenTransition } from "@/components/StratStageAgentToke
 import { StratViewerPanel } from "@/components/StratViewerPanel";
 import { resolveGameMapForStrat } from "@/lib/resolve-game-map";
 import {
+  abilityMetaForSlot,
+  fetchValorantAbilityUiBySlug,
+  type ValorantAbilityUiMeta,
+} from "@/lib/valorant-api-abilities";
+import {
   X,
   ChevronLeft,
   ChevronRight,
@@ -23,6 +28,17 @@ import {
   Shield,
   Layers,
 } from "lucide-react";
+
+function stripHtml(input: string): string {
+  return input.replace(/<[^>]+>/g, "").trim();
+}
+
+function parseStepTiming(input: string): string | null {
+  const clean = stripHtml(input);
+  const m = clean.match(/^\s*(\[(?:\d{1,2}:\d{2}|T\+\d{1,2})\]|T\+\d{1,2}|\d{1,2}:\d{2})/i);
+  if (!m) return null;
+  return m[1]?.replace(/^\[|\]$/g, "") ?? null;
+}
 
 export function StratModal({
   strat,
@@ -40,6 +56,9 @@ export function StratModal({
   const [stageIndex, setStageIndex] = useState(0);
   const [agentStageTransition, setAgentStageTransition] =
     useState<StratAgentTokenTransition | null>(null);
+  const [abilityMetaBySlug, setAbilityMetaBySlug] = useState<
+    Record<string, ValorantAbilityUiMeta[]>
+  >({});
   const lastStageIdxRef = useRef(0);
   const prevStratIdRef = useRef<string | null>(null);
 
@@ -58,6 +77,20 @@ export function StratModal({
     setStageIndex(0);
   }, [strat?.id]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void fetchValorantAbilityUiBySlug()
+      .then((data) => {
+        if (!cancelled) setAbilityMetaBySlug(data);
+      })
+      .catch(() => {
+        if (!cancelled) setAbilityMetaBySlug({});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const gameMap = useMemo(
     () => (strat ? resolveGameMapForStrat(strat, maps) : null),
     [strat, maps],
@@ -67,6 +100,18 @@ export function StratModal({
   const maxStage = Math.max(0, stages.length - 1);
   const safeStageIndex = Math.min(stageIndex, maxStage);
   const activeStage = stages[safeStageIndex] ?? stages[0];
+  const activeStageUtility = useMemo(() => {
+    if (!activeStage) return [];
+    return activeStage.abilities.map((ab) => {
+      const meta = abilityMetaForSlot(abilityMetaBySlug, ab.agentSlug, ab.slot);
+      return {
+        id: ab.id,
+        agentSlug: ab.agentSlug,
+        slot: ab.slot.toUpperCase(),
+        name: meta?.displayName ?? ab.slot.toUpperCase(),
+      };
+    });
+  }, [activeStage, abilityMetaBySlug]);
 
   useLayoutEffect(() => {
     if (!strat) return;
@@ -122,7 +167,7 @@ export function StratModal({
         onClick={onClose}
         aria-label="Close"
       />
-      <div className="relative z-10 flex h-[100dvh] min-h-0 w-full max-w-none flex-col overflow-hidden border-0 border-violet-500/25 bg-slate-950/95 shadow-2xl shadow-violet-950/40 sm:max-h-[calc(100dvh-1rem)] sm:rounded-xl sm:border sm:ring-1 sm:ring-violet-500/10">
+      <div className="relative z-10 flex h-dvh min-h-0 w-full max-w-none flex-col overflow-hidden border-0 border-violet-500/25 bg-slate-950/95 shadow-2xl shadow-violet-950/40 sm:max-h-[calc(100dvh-1rem)] sm:rounded-xl sm:border sm:ring-1 sm:ring-violet-500/10">
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-violet-500/15 px-4 py-4 sm:px-6">
           <div>
             <h2
@@ -204,7 +249,7 @@ export function StratModal({
                             >
                               {i + 1}
                             </span>
-                            <span className="max-w-[14rem] font-medium leading-snug">
+                            <span className="max-w-56 font-medium leading-snug">
                               {st.title}
                             </span>
                           </button>
@@ -232,7 +277,60 @@ export function StratModal({
                   {strat.steps.length > 0 && (
                     <section>
                       <h3 className="text-xs font-semibold uppercase tracking-wide text-violet-400/55">
-                        Round plan
+                        Execution timeline
+                      </h3>
+                      <ol className="mt-3 space-y-2">
+                        {strat.steps.map((s, i) => {
+                          const timing = parseStepTiming(s.text);
+                          return (
+                            <li
+                              key={`timeline-${i}`}
+                              className="rounded-lg border border-violet-800/35 bg-slate-950/45 px-3 py-2 text-sm text-violet-100/90"
+                            >
+                              <div className="mb-1 flex items-center gap-2">
+                                <span className="text-xs font-semibold text-violet-300/70">
+                                  Step {i + 1}
+                                </span>
+                                {timing ? (
+                                  <span className="rounded-full border border-cyan-500/40 bg-cyan-950/40 px-2 py-0.5 text-[11px] font-semibold text-cyan-200">
+                                    {timing}
+                                  </span>
+                                ) : null}
+                              </div>
+                              <p className="text-sm text-slate-200/90">{stripHtml(s.text)}</p>
+                            </li>
+                          );
+                        })}
+                      </ol>
+                    </section>
+                  )}
+
+                  {activeStageUtility.length > 0 && (
+                    <section>
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-violet-400/55">
+                        Utility in this stage
+                      </h3>
+                      <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+                        {activeStageUtility.map((u) => (
+                          <li
+                            key={u.id}
+                            className="rounded-lg border border-violet-700/35 bg-slate-950/45 px-3 py-2 text-sm text-slate-100/90"
+                          >
+                            <span className="font-semibold text-violet-200">{u.agentSlug}</span>
+                            <span className="text-violet-400/55"> · </span>
+                            <span className="text-cyan-200">{u.slot}</span>
+                            <span className="text-violet-400/55"> · </span>
+                            <span>{u.name}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  )}
+
+                  {strat.steps.length > 0 && (
+                    <section>
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-violet-400/55">
+                        Detailed plan
                       </h3>
                       <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-200/90">
                         {strat.steps.map((s, i) => (

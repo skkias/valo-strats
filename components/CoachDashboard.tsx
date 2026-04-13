@@ -1,25 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import type {
   Strat,
-  StratImage,
-  StratRole,
   StratSide,
-  StratStage,
 } from "@/types/strat";
 import type { Agent, GameMap } from "@/types/catalog";
 import {
-  Folder,
   Loader2,
+  Folder,
   Plus,
   RefreshCw,
   Trash2,
   Upload,
 } from "lucide-react";
 import Link from "next/link";
-import { StratStageEditor } from "@/components/StratStageEditor";
-import { defaultStratStages } from "@/lib/strat-stages";
 import {
   createStratAction,
   deleteStratAction,
@@ -27,113 +23,25 @@ import {
   updateStratAction,
   uploadStratImageAction,
 } from "@/app/coach/strat-actions";
+import {
+  emptyCoachForm,
+  groupStratsByMap,
+  parseRoles,
+  resolveMapIdForStrat,
+  slotsFromStratAgents,
+} from "@/lib/coach-strat-form";
 
-const EMPTY_SLOTS: [string, string, string, string, string] = [
-  "",
-  "",
-  "",
-  "",
-  "",
-];
-
-function parseRoles(text: string): StratRole[] {
-  return text.split("\n").reduce<StratRole[]>((acc, line) => {
-    const t = line.trim();
-    if (!t) return acc;
-    const pipe = t.indexOf("|");
-    if (pipe !== -1) {
-      acc.push({
-        agent: t.slice(0, pipe).trim(),
-        desc: t.slice(pipe + 1).trim(),
-      });
-      return acc;
-    }
-    const dash = t.indexOf(" - ");
-    if (dash !== -1) {
-      acc.push({
-        agent: t.slice(0, dash).trim(),
-        desc: t.slice(dash + 3).trim(),
-      });
-      return acc;
-    }
-    acc.push({ agent: t, desc: "" });
-    return acc;
-  }, []);
-}
-
-function emptyForm(): {
-  title: string;
-  map_id: string;
-  side: StratSide;
-  agentSlots: [string, string, string, string, string];
-  difficulty: string;
-  description: string;
-  steps: string;
-  roles: string;
-  notes: string;
-  tags: string;
-  images: StratImage[];
-  stratStages: StratStage[];
-} {
-  return {
-    title: "",
-    map_id: "",
-    side: "atk" as StratSide,
-    agentSlots: [...EMPTY_SLOTS] as [string, string, string, string, string],
-    difficulty: "2",
-    description: "",
-    steps: "",
-    roles: "",
-    notes: "",
-    tags: "",
-    images: [{ url: "", label: "" }] as StratImage[],
-    stratStages: defaultStratStages(),
-  };
-}
-
-function resolveMapId(s: Strat, maps: GameMap[]): string {
-  if (s.map_id) return s.map_id;
-  const t = s.map.trim().toLowerCase();
-  return maps.find((m) => m.name === s.map || m.slug === t)?.id ?? "";
-}
-
-function slotsFromStratAgents(
-  agents: string[],
-): [string, string, string, string, string] {
-  const out = [...EMPTY_SLOTS] as [string, string, string, string, string];
-  for (let i = 0; i < 5; i++) out[i] = agents[i] ?? "";
-  return out;
-}
-
-type MapStratGroup = {
-  key: string;
-  label: string;
-  sort: number;
-  strats: Strat[];
-};
-
-function groupStratsByMap(strats: Strat[], maps: GameMap[]): MapStratGroup[] {
-  const orderById = new Map(maps.map((m, i) => [m.id, i]));
-  const buckets = new Map<string, MapStratGroup>();
-
-  for (const s of strats) {
-    const resolvedId = s.map_id ?? resolveMapId(s, maps);
-    const meta = resolvedId ? maps.find((m) => m.id === resolvedId) : undefined;
-    const key = meta?.id ?? `legacy:${(s.map || "unknown").toLowerCase()}`;
-    const label = meta?.name ?? (s.map || "Unknown map");
-    const sort = meta ? (orderById.get(meta.id) ?? 500) : 600;
-    if (!buckets.has(key)) {
-      buckets.set(key, { key, label, sort, strats: [] });
-    }
-    buckets.get(key)!.strats.push(s);
-  }
-  for (const g of buckets.values()) {
-    g.strats.sort((a, b) => a.title.localeCompare(b.title));
-  }
-  return [...buckets.values()].sort(
-    (a, b) => a.sort - b.sort || a.label.localeCompare(b.label),
-  );
-}
+const StratStageEditor = dynamic(
+  () => import("@/components/StratStageEditor").then((m) => m.StratStageEditor),
+  {
+    ssr: false,
+    loading: () => (
+      <p className="rounded-lg border border-violet-800/40 bg-slate-950/55 px-3 py-2 text-xs text-violet-300/75">
+        Loading stage editor…
+      </p>
+    ),
+  },
+);
 
 export function CoachDashboard({
   initialAgents,
@@ -149,7 +57,7 @@ export function CoachDashboard({
   const [saving, setSaving] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState(emptyCoachForm);
   /** Row index that receives pasted images (Ctrl+V). */
   const [pasteTargetRow, setPasteTargetRow] = useState(0);
 
@@ -237,7 +145,7 @@ export function CoachDashboard({
     setEditingId(s.id);
     setForm({
       title: s.title,
-      map_id: resolveMapId(s, initialMaps),
+      map_id: resolveMapIdForStrat(s, initialMaps),
       side: s.side,
       agentSlots: slotsFromStratAgents(s.agents),
       difficulty: String(s.difficulty),
@@ -250,15 +158,14 @@ export function CoachDashboard({
         s.images.length > 0
           ? s.images.map((i) => ({ url: i.url, label: i.label ?? "" }))
           : [{ url: "", label: "" }],
-      stratStages:
-        s.strat_stages.length > 0 ? s.strat_stages : defaultStratStages(),
+      stratStages: s.strat_stages.length > 0 ? s.strat_stages : emptyCoachForm().stratStages,
     });
     setBanner(null);
   }, [initialMaps]);
 
   const selectNewStrat = useCallback(() => {
     setEditingId(null);
-    setForm(emptyForm());
+    setForm(emptyCoachForm());
     setBanner(null);
   }, []);
 
@@ -912,7 +819,7 @@ export function CoachDashboard({
                   </div>
                   <div
                     ref={setStagesControlsMountEl}
-                    className="min-h-0 min-h-[200px] flex-1"
+                    className="min-h-[200px] flex-1"
                   />
                 </div>
               </div>

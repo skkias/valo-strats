@@ -43,6 +43,11 @@ export function valorantDisplayNameToSlug(displayName: string): string {
 let cache: Record<string, ValorantAbilityUiMeta[]> | null = null;
 let inflight: Promise<Record<string, ValorantAbilityUiMeta[]>> | null = null;
 
+function abilityCatalogUrl(): string {
+  if (typeof window !== "undefined") return "/api/valorant/abilities";
+  return "https://valorant-api.com/v1/agents?isPlayableCharacter=true&language=en-US";
+}
+
 /**
  * Fetches playable agents from Valorant API and maps abilities to Q/E/C/X with
  * display names and descriptions. Cached in-memory for the session.
@@ -54,10 +59,14 @@ export async function fetchValorantAbilityUiBySlug(): Promise<
   if (inflight) return inflight;
 
   inflight = (async () => {
-    const res = await fetch(
-      "https://valorant-api.com/v1/agents?isPlayableCharacter=true&language=en-US",
-      { cache: "force-cache" },
-    );
+    let res = await fetch(abilityCatalogUrl(), { cache: "force-cache" });
+    if (!res.ok && typeof window !== "undefined") {
+      // Fallback to direct upstream if API route is unavailable.
+      res = await fetch(
+        "https://valorant-api.com/v1/agents?isPlayableCharacter=true&language=en-US",
+        { cache: "force-cache" },
+      );
+    }
     if (!res.ok) throw new Error(`Valorant API: ${res.status}`);
     const json: {
       data: Array<{

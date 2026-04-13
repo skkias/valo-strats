@@ -28,6 +28,8 @@ If unset, each login page explains that the password is not configured.
 
 **Coach flow:** Unlock `/coach` with `COACH_PASSWORD`. Strat CRUD runs in **server actions** using `SUPABASE_SERVICE_ROLE_KEY` (never expose to the browser). Add the service role key from Supabase **Settings → API** to `.env` only.
 
+Login endpoints apply a cookie-based failed-attempt throttle (cooldown after repeated bad passwords). Clear cookies or wait for cooldown when testing lockout UX.
+
 ## Documentation viewer theme (optional, server-only)
 
 Injected as CSS variables on `.docs-theme-root` in `app/docs/layout.tsx`. Defaults live in `lib/docs-theme.ts` (`DOCS_THEME_DEFAULTS`). Restart the dev server or redeploy after changes.
@@ -58,6 +60,8 @@ Injected as CSS variables on `.docs-theme-root` in `app/docs/layout.tsx`. Defaul
 
 Stylesheet: `app/docs/docs-theme.css`.
 
-## Not in this app
+## Security notes
 
-- **Service role** key is not required for the shipped UI. Do not expose it to the client.
+- Keep `SUPABASE_SERVICE_ROLE_KEY` server-only. Never expose it to client components or `NEXT_PUBLIC_*`.
+- `DOCS_PASSWORD` and `COACH_PASSWORD` are shared secrets. Rotate them periodically and after staff changes.
+- Pair password rotation with cookie invalidation (login again after rotation).
