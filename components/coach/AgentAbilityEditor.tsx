@@ -671,9 +671,6 @@ export function AgentAbilityEditor({
   const [draftSlot, setDraftSlot] = useState<AgentAbilitySlot>("q");
   const [draftName, setDraftName] = useState("");
   const [draftShape, setDraftShape] = useState<AgentAbilityShapeKind>("circle");
-  const [draftTexture, setDraftTexture] = useState<AbilityTextureId>("diag_fwd");
-  const [draftTextureRadialFromOrigin, setDraftTextureRadialFromOrigin] =
-    useState(false);
   const [draftBlocksVision, setDraftBlocksVision] = useState(false);
   const [draftVisionObstruction, setDraftVisionObstruction] = useState<
     "filled" | "hollow"
@@ -727,8 +724,6 @@ export function AgentAbilityEditor({
       name,
       shapeKind: draftShape,
       color: themeColor,
-      textureId: draftTexture,
-      textureRadialFromOrigin: draftTextureRadialFromOrigin,
       blocksVision: draftBlocksVision ? true : undefined,
       visionObstruction:
         draftBlocksVision &&
@@ -744,8 +739,6 @@ export function AgentAbilityEditor({
     draftName,
     draftShape,
     themeColor,
-    draftTexture,
-    draftTextureRadialFromOrigin,
     draftBlocksVision,
     draftVisionObstruction,
   ]);
@@ -800,12 +793,18 @@ export function AgentAbilityEditor({
         name: placement.name,
         shapeKind: placement.shapeKind,
         color: placement.color,
-        textureId: placement.textureId,
-        textureRadialFromOrigin:
-          placement.textureRadialFromOrigin === true ? true : undefined,
         geometry: geo,
         stratPlacementMode: defaultStratPlacementForShape(placement.shapeKind),
       };
+      if (
+        placement.textureId &&
+        placement.textureId !== "solid"
+      ) {
+        next.textureId = placement.textureId;
+      }
+      if (placement.textureRadialFromOrigin === true) {
+        next.textureRadialFromOrigin = true;
+      }
       if (placement.blocksVision === true) {
         next.blocksVision = true;
         if (
@@ -1131,8 +1130,8 @@ export function AgentAbilityEditor({
         ) : null}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="space-y-3">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
+        <div className="min-w-0 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-violet-800/30 bg-slate-950/55 px-3 py-2 text-xs text-violet-200/90">
             <span className="text-violet-400/90">
               Snap to grid (easier to match in-game proportions by eye)
@@ -1416,7 +1415,9 @@ export function AgentAbilityEditor({
           )}
         </div>
 
-        <div className="space-y-4 rounded-xl border border-violet-500/20 bg-slate-950/50 p-4">
+        <div
+          className="min-h-0 min-w-0 space-y-4 rounded-xl border border-violet-500/20 bg-slate-950/50 p-4 xl:max-h-[76dvh] xl:overflow-y-auto xl:overscroll-contain [scrollbar-gutter:stable]"
+        >
           <h3 className="text-sm font-semibold text-white">Define new ability</h3>
           <div className="space-y-2">
             <label className="label" htmlFor="ab-slot">
@@ -1479,36 +1480,11 @@ export function AgentAbilityEditor({
               ))}
             </select>
           </div>
-          <div className="space-y-2">
-            <label className="label" htmlFor="ab-texture">
-              Texture
-            </label>
-            <select
-              id="ab-texture"
-              value={draftTexture}
-              onChange={(e) => setDraftTexture(e.target.value as AbilityTextureId)}
-              className="input-field"
-              disabled={!!placement}
-            >
-              {ABILITY_TEXTURE_OPTIONS.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-            <label className="mt-1.5 flex cursor-pointer items-center gap-2 text-xs text-violet-200/85">
-              <input
-                type="checkbox"
-                checked={draftTextureRadialFromOrigin}
-                onChange={(e) =>
-                  setDraftTextureRadialFromOrigin(e.target.checked)
-                }
-                className="rounded border-violet-600/60"
-                disabled={!!placement}
-              />
-              Radialize texture from origin
-            </label>
-          </div>
+          <p className="text-[10px] leading-snug text-violet-500/80">
+            New shapes start with a solid fill. After placement, select the ability in
+            Saved — for non-point shapes, use the Texture section for fill pattern and
+            radialize.
+          </p>
           <div className="space-y-2 rounded-md border border-slate-800/50 bg-slate-950/35 p-2.5">
             <h4 className="text-[11px] font-semibold text-violet-100/90">
               Vision line-of-sight

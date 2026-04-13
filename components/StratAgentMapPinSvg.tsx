@@ -45,6 +45,15 @@ export function StratAgentMapPinSvg({
     const url = portraitUrl.trim();
     return (
       <>
+        {/*
+          Filled invisible disk so pointer events always hit the token (portrait image
+          can miss hits; stroke-only ring does not fill the interior in SVG).
+        */}
+        <circle
+          r={tokenR}
+          fill="transparent"
+          style={{ pointerEvents: "all" }}
+        />
         <defs>
           <clipPath id={clipId}>
             <circle cx={0} cy={0} r={tokenR} />
@@ -65,6 +74,7 @@ export function StratAgentMapPinSvg({
           fill="none"
           stroke={selected ? "#fae8ff" : accent.stroke}
           strokeWidth={strokeW}
+          style={{ pointerEvents: "none" }}
         />
       </>
     );
@@ -77,6 +87,7 @@ export function StratAgentMapPinSvg({
         fill={accent.fill}
         stroke={selected ? "#fae8ff" : accent.stroke}
         strokeWidth={strokeW}
+        style={{ pointerEvents: "all" }}
       />
       <text
         y={fontAgent * 0.35}
