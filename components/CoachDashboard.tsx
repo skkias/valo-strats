@@ -567,7 +567,7 @@ export function CoachDashboard({
                 <div className="label" id="strat-difficulty-label">
                   Difficulty
                 </div>
-                <div className="mt-1 flex min-h-27 w-full items-stretch sm:min-h-29">
+                <div className="mt-1 flex min-h-27 w-full items-center sm:min-h-29">
                   <div className="w-full min-w-0">
                     <DifficultyPicker
                       value={form.difficulty}

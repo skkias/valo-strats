@@ -24,6 +24,15 @@ export function effectivePointMarkStyle(
   return "ability_icon";
 }
 
+/** Strat map + blueprint editor: opacity multiplier for point markers (default full). */
+export function effectivePointColorIntensity(
+  b: Pick<AgentAbilityBlueprint, "pointColorIntensity">,
+): number {
+  const n = b.pointColorIntensity;
+  if (typeof n !== "number" || !Number.isFinite(n)) return 1;
+  return Math.min(1, Math.max(0.15, n));
+}
+
 export function effectivePointMarkSymbolId(
   b: Pick<AgentAbilityBlueprint, "pointMarkSymbolId">,
 ): PointMarkSymbolId {

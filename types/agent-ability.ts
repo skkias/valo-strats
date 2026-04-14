@@ -196,6 +196,10 @@ export interface AgentAbilityBlueprint {
    */
   pointIconScale?: number;
   /**
+   * Point shapes only: multiplies strat-map marker opacity (roughly 0.15–1). Omitted = full intensity.
+   */
+  pointColorIntensity?: number;
+  /**
    * When true, this blueprint’s on-map geometry participates in vision-cone LOS
    * (token cones and blueprint vision wedges).
    */

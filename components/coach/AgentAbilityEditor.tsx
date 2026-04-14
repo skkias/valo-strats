@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Loader2, Save, Trash2 } from "lucide-react";
 import type { Agent } from "@/types/catalog";
 import type {
@@ -846,10 +853,6 @@ export function AgentAbilityEditor({
   const [draftSlot, setDraftSlot] = useState<AgentAbilitySlot>("q");
   const [draftName, setDraftName] = useState("");
   const [draftShape, setDraftShape] = useState<AgentAbilityShapeKind>("circle");
-  const [draftBlocksVision, setDraftBlocksVision] = useState(false);
-  const [draftVisionObstruction, setDraftVisionObstruction] = useState<
-    "filled" | "hollow"
-  >("filled");
   const [previewMapId, setPreviewMapId] = useState<string | null>(
     maps[0]?.id ?? null,
   );
@@ -857,6 +860,12 @@ export function AgentAbilityEditor({
   /** 0 = snap off; otherwise grid units in blueprint space. */
   const [snapStep, setSnapStep] = useState<number>(25);
   const [cursorBp, setCursorBp] = useState<MapPoint | null>(null);
+  /** Match blueprint canvas card height so the right sidebar bottom aligns with the grid. */
+  const blueprintCanvasBlockRef = useRef<HTMLDivElement>(null);
+  const [blueprintCanvasBlockHeightPx, setBlueprintCanvasBlockHeightPx] =
+    useState<number | null>(null);
+  /** Sidebar height sync only when two-column layout (Tailwind `xl`). */
+  const [blueprintSidebarAlignXl, setBlueprintSidebarAlignXl] = useState(false);
 
   const blueprintSvgExtent = useMemo(() => {
     let maxC = BLUEPRINT_CANVAS_SIZE;
@@ -911,6 +920,26 @@ export function AgentAbilityEditor({
     [placement, snapStep],
   );
 
+  useLayoutEffect(() => {
+    const el = blueprintCanvasBlockRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const sync = () => {
+      setBlueprintCanvasBlockHeightPx(el.getBoundingClientRect().height);
+    };
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [blueprintSvgExtent, selectedId, placement]);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1280px)");
+    const apply = () => setBlueprintSidebarAlignXl(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+
   useEffect(() => {
     if (draftSlot === "custom") return;
     if (!valorantUiBySlug) return;
@@ -949,13 +978,6 @@ export function AgentAbilityEditor({
       name,
       shapeKind: draftShape,
       color: themeColor,
-      blocksVision: draftBlocksVision ? true : undefined,
-      visionObstruction:
-        draftBlocksVision &&
-        shapeSupportsVisionObstructionModes(draftShape) &&
-        draftVisionObstruction === "hollow"
-          ? "hollow"
-          : undefined,
       points: [],
     });
     setBanner(null);
@@ -964,8 +986,6 @@ export function AgentAbilityEditor({
     draftName,
     draftShape,
     themeColor,
-    draftBlocksVision,
-    draftVisionObstruction,
   ]);
 
   const cancelPlacement = useCallback(() => {
@@ -1119,6 +1139,7 @@ export function AgentAbilityEditor({
           | "pointMarkStyle"
           | "pointMarkSymbolId"
           | "pointIconScale"
+          | "pointColorIntensity"
           | "textureId"
           | "textureRadialFromOrigin"
           | "blocksVision"
@@ -1181,6 +1202,13 @@ export function AgentAbilityEditor({
               delete n.pointIconScale;
             } else {
               n.pointIconScale = patch.pointIconScale;
+            }
+          }
+          if ("pointColorIntensity" in patch) {
+            if (patch.pointColorIntensity === undefined) {
+              delete n.pointColorIntensity;
+            } else {
+              n.pointColorIntensity = patch.pointColorIntensity;
             }
           }
           if ("textureId" in patch) {
@@ -1451,7 +1479,10 @@ export function AgentAbilityEditor({
             <strong className="text-violet-200/85">drag the colored dots</strong> to resize and
             move. While placing a new shape, move the pointer to preview before you click.
           </p>
-          <div className="overflow-hidden rounded-xl border border-violet-500/25 bg-slate-950/80">
+          <div
+            ref={blueprintCanvasBlockRef}
+            className="overflow-hidden rounded-xl border border-violet-500/25 bg-slate-950/80"
+          >
             <div className="mx-auto w-full max-w-[min(100%,78dvh)] p-1.5">
               <svg
                 ref={svgRef}
@@ -1733,7 +1764,19 @@ export function AgentAbilityEditor({
         </div>
 
         <div
-          className="min-h-0 min-w-0 space-y-4 rounded-xl border border-violet-500/20 bg-slate-950/50 p-4 xl:max-h-[76dvh] xl:overflow-y-auto xl:overscroll-contain [scrollbar-gutter:stable]"
+          className={`min-h-0 min-w-0 space-y-4 rounded-xl border border-violet-500/20 bg-slate-950/50 p-4 xl:overflow-y-auto xl:overscroll-contain [scrollbar-gutter:stable] ${
+            blueprintSidebarAlignXl && blueprintCanvasBlockHeightPx != null
+              ? ""
+              : "xl:max-h-[76dvh]"
+          }`}
+          style={
+            blueprintSidebarAlignXl && blueprintCanvasBlockHeightPx != null
+              ? {
+                  minHeight: blueprintCanvasBlockHeightPx,
+                  maxHeight: blueprintCanvasBlockHeightPx,
+                }
+              : undefined
+          }
         >
           <h3 className="text-sm font-semibold text-white">Define new ability</h3>
           <div className="space-y-2">
@@ -1802,54 +1845,6 @@ export function AgentAbilityEditor({
             Saved — for non-point shapes, use the Texture section for fill pattern and
             radialize.
           </p>
-          <div className="space-y-2 rounded-md border border-slate-800/50 bg-slate-950/35 p-2.5">
-            <h4 className="text-[11px] font-semibold text-violet-100/90">
-              Vision line-of-sight
-            </h4>
-            <p className="text-[10px] leading-snug text-violet-400/75">
-              When enabled, this ability&apos;s on-map shape blocks token vision cones and
-              clips blueprint vision wedges. Enclosed shapes can use a hollow shell so the
-              interior stays visible (e.g. smoke rim).
-            </p>
-            <label className="flex cursor-pointer items-center gap-2 text-[11px] text-violet-200/90">
-              <input
-                type="checkbox"
-                checked={draftBlocksVision}
-                onChange={(e) => setDraftBlocksVision(e.target.checked)}
-                className="rounded border-violet-600/60"
-                disabled={!!placement}
-              />
-              Blocks vision cones
-            </label>
-            {draftBlocksVision &&
-            shapeSupportsVisionObstructionModes(draftShape) ? (
-              <div className="space-y-1.5 border-t border-violet-900/25 pt-2 text-[10px] text-violet-200/85">
-                <span className="font-medium text-violet-100/90">Enclosed shape</span>
-                <label className="flex cursor-pointer items-center gap-2">
-                  <input
-                    type="radio"
-                    name="draft-vision-obs"
-                    checked={draftVisionObstruction === "filled"}
-                    onChange={() => setDraftVisionObstruction("filled")}
-                    disabled={!!placement}
-                    className="border-violet-600/60"
-                  />
-                  Filled obstruction — interior blocks LOS
-                </label>
-                <label className="flex cursor-pointer items-center gap-2">
-                  <input
-                    type="radio"
-                    name="draft-vision-obs"
-                    checked={draftVisionObstruction === "hollow"}
-                    onChange={() => setDraftVisionObstruction("hollow")}
-                    disabled={!!placement}
-                    className="border-violet-600/60"
-                  />
-                  Hollow obstruction — boundary only, see-through center
-                </label>
-              </div>
-            ) : null}
-          </div>
           <button
             type="button"
             className="btn-primary w-full"
@@ -2189,6 +2184,36 @@ export function AgentAbilityEditor({
                     >
                       Reset marker size
                     </button>
+                    <label className="block text-[10px] text-violet-400/90">
+                      Color intensity (
+                      {Math.round((selected.pointColorIntensity ?? 1) * 100)}%
+                      )
+                      <input
+                        type="range"
+                        min={0.15}
+                        max={1}
+                        step={0.05}
+                        value={selected.pointColorIntensity ?? 1}
+                        onChange={(e) =>
+                          updateSelectedBlueprintMeta({
+                            pointColorIntensity:
+                              Number(e.target.value) || 1,
+                          })
+                        }
+                        className="mt-1 w-full accent-cyan-500"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="btn-secondary w-full py-1 text-[11px]"
+                      onClick={() =>
+                        updateSelectedBlueprintMeta({
+                          pointColorIntensity: undefined,
+                        })
+                      }
+                    >
+                      Reset color intensity
+                    </button>
                   </div>
                 ) : null}
                 {selected.shapeKind !== "point" ? (
@@ -2238,6 +2263,11 @@ export function AgentAbilityEditor({
                   <h4 className="text-[11px] font-semibold text-violet-100/90">
                     Vision line-of-sight
                   </h4>
+                  <p className="text-[10px] leading-snug text-violet-400/75">
+                    When enabled, this ability&apos;s on-map shape blocks token vision
+                    cones and clips blueprint vision wedges. Enclosed shapes can use a
+                    hollow shell so the interior stays visible (e.g. smoke rim).
+                  </p>
                   <label className="flex cursor-pointer items-center gap-2 text-[11px] text-violet-200/90">
                     <input
                       type="checkbox"

@@ -357,6 +357,12 @@ function normalizePointIconScale(raw: unknown): number | undefined {
   return Math.min(3, Math.max(0.12, n));
 }
 
+function normalizePointColorIntensity(raw: unknown): number | undefined {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return undefined;
+  return Math.min(1, Math.max(0.15, n));
+}
+
 export function normalizeAgentAbilityBlueprint(raw: unknown): AgentAbilityBlueprint | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
@@ -385,6 +391,9 @@ export function normalizeAgentAbilityBlueprint(raw: unknown): AgentAbilityBluepr
   );
   const pointIconScale = normalizePointIconScale(
     o.pointIconScale ?? o.point_icon_scale,
+  );
+  const pointColorIntensity = normalizePointColorIntensity(
+    o.pointColorIntensity ?? o.point_color_intensity,
   );
   const textureId = normalizeAbilityTextureId(o.textureId ?? o.texture_id);
   const textureRadialFromOrigin = normalizeTextureRadialFromOrigin(
@@ -419,6 +428,7 @@ export function normalizeAgentAbilityBlueprint(raw: unknown): AgentAbilityBluepr
   if (pointMarkStyle) base.pointMarkStyle = pointMarkStyle;
   if (pointMarkSymbolId) base.pointMarkSymbolId = pointMarkSymbolId;
   if (pointIconScale !== undefined) base.pointIconScale = pointIconScale;
+  if (pointColorIntensity !== undefined) base.pointColorIntensity = pointColorIntensity;
   if (textureId) base.textureId = textureId;
   if (textureRadialFromOrigin === true) {
     base.textureRadialFromOrigin = true;

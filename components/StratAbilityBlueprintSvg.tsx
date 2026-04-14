@@ -21,6 +21,7 @@ import {
 } from "@/lib/vision-cone-los";
 import { computeRicochetPath } from "@/lib/ricochet-path";
 import {
+  effectivePointColorIntensity,
   effectivePointMarkStyle,
   effectivePointMarkSymbolId,
 } from "@/lib/point-blueprint-mark";
@@ -396,6 +397,7 @@ export function StratAbilityBlueprintSvg({
           : undefined;
       const effectiveIconUrl =
         markStyle === "ability_icon" ? abilityDisplayIconUrl : null;
+      const intensity = effectivePointColorIntensity(blueprint);
       inner = (
         <PointBlueprintMark
           x={g.x}
@@ -405,7 +407,7 @@ export function StratAbilityBlueprintSvg({
           iconScale={iconScale}
           selected={!!selected}
           swMap={swMap}
-          op={op}
+          op={op * intensity}
           pointerEvents={pointerEvents}
           markStyle={markStyle}
           symbolId={symbolId}

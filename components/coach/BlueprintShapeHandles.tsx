@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentAbilityBlueprint, AgentAbilityGeometry } from "@/types/agent-ability";
 import {
+  effectivePointColorIntensity,
   effectivePointMarkStyle,
   effectivePointMarkSymbolId,
 } from "@/lib/point-blueprint-mark";
@@ -199,8 +200,12 @@ export function BlueprintShapeHandles({
           markStyle === "symbol"
             ? Math.max(r * 1.35, vb * 0.028 * iconScale)
             : Math.max(r * 1.25, iconUrl ? half * 0.95 : r);
+        const colorIntensity = effectivePointColorIntensity(blueprint);
         return (
-          <g style={{ pointerEvents: "auto" }} data-blueprint-handles>
+          <g
+            style={{ pointerEvents: "auto", opacity: colorIntensity }}
+            data-blueprint-handles
+          >
             <g
               className="cursor-grab touch-none active:cursor-grabbing"
               onPointerDown={(e) => beginDrag(e, "point", geom)}
