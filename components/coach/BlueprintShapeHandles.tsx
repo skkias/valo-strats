@@ -6,15 +6,22 @@ import type { MapPoint } from "@/lib/map-path";
 import { clientToSvgPoint } from "@/lib/svg-coords";
 import {
   clampBlueprintPoint,
+  clampBlueprintPointExtended,
   snapBlueprintPoint,
+  snapBlueprintPointExtended,
 } from "@/lib/blueprint-canvas-snap";
-import { BLUEPRINT_CANVAS_SIZE } from "@/lib/agent-ability-blueprint-scale";
+import {
+  BLUEPRINT_CANVAS_SIZE,
+  BLUEPRINT_EDITOR_COORD_MAX,
+  BLUEPRINT_GEOMETRY_LENGTH_MAX,
+} from "@/lib/agent-ability-blueprint-scale";
 
 const HR = 0.018;
 const MAX = BLUEPRINT_CANVAS_SIZE;
+const RECT_EXTENT_MAX = BLUEPRINT_EDITOR_COORD_MAX;
 
 function clampRadiusGeom(r: number): number {
-  return Math.min(500, Math.max(6, r));
+  return Math.min(BLUEPRINT_GEOMETRY_LENGTH_MAX, Math.max(6, r));
 }
 
 type DragCtx = {
@@ -56,13 +63,18 @@ export function BlueprintShapeHandles({
     setPointIconFailed(false);
   }, [blueprint.id, pointDisplayIconUrl]);
 
-  const toBp = useCallback(
-    (clientX: number, clientY: number): MapPoint => {
+  const pointerToBlueprintPoint = useCallback(
+    (clientX: number, clientY: number, extended: boolean): MapPoint => {
       const el = svgRef.current;
       if (!el) return { x: 0, y: 0 };
       const raw = clientToSvgPoint(el, clientX, clientY);
-      const p = clampBlueprintPoint(raw);
-      return snapStep > 0 ? snapBlueprintPoint(p, snapStep) : p;
+      const base = extended
+        ? clampBlueprintPointExtended(raw)
+        : clampBlueprintPoint(raw);
+      if (snapStep <= 0) return base;
+      return extended
+        ? snapBlueprintPointExtended(base, snapStep)
+        : snapBlueprintPoint(base, snapStep);
     },
     [svgRef, snapStep],
   );
@@ -94,7 +106,11 @@ export function BlueprintShapeHandles({
     function onMove(e: PointerEvent) {
       const ctx = dragCtx.current;
       if (!ctx) return;
-      const p = toBp(e.clientX, e.clientY);
+      const extended =
+        ctx.handleId === "mov-b" &&
+        (ctx.startGeom.kind === "movement" ||
+          ctx.startGeom.kind === "ricochet");
+      const p = pointerToBlueprintPoint(e.clientX, e.clientY, extended);
       const next = computeDraggedGeometry(
         ctx.handleId,
         ctx.startGeom,
@@ -106,7 +122,7 @@ export function BlueprintShapeHandles({
     }
     window.addEventListener("pointermove", onMove);
     return () => window.removeEventListener("pointermove", onMove);
-  }, [pushGeom, toBp]);
+  }, [pushGeom, pointerToBlueprintPoint]);
 
   function beginDrag(
     e: React.PointerEvent,
@@ -116,9 +132,12 @@ export function BlueprintShapeHandles({
     e.stopPropagation();
     e.preventDefault();
     (e.target as Element).setPointerCapture?.(e.pointerId);
+    const extended =
+      handleId === "mov-b" &&
+      (startGeom.kind === "movement" || startGeom.kind === "ricochet");
     dragCtx.current = {
       handleId,
-      startPointer: toBp(e.clientX, e.clientY),
+      startPointer: pointerToBlueprintPoint(e.clientX, e.clientY, extended),
       startGeom,
     };
   }
@@ -395,8 +414,8 @@ function computeDraggedGeometry(
       if (handleId === "rect-mv") {
         let nx = x + dx;
         let ny = y + dy;
-        nx = Math.max(0, Math.min(MAX - w, nx));
-        ny = Math.max(0, Math.min(MAX - h, ny));
+        nx = Math.max(0, Math.min(RECT_EXTENT_MAX - w, nx));
+        ny = Math.max(0, Math.min(RECT_EXTENT_MAX - h, ny));
         return {
           kind: "rectangle",
           x: nx,
@@ -411,8 +430,8 @@ function computeDraggedGeometry(
         const br0y = y + h;
         let brX = br0x + dx;
         let brY = br0y + dy;
-        brX = Math.max(x + 1, Math.min(MAX, brX));
-        brY = Math.max(y + 1, Math.min(MAX, brY));
+        brX = Math.max(x + 1, Math.min(RECT_EXTENT_MAX, brX));
+        brY = Math.max(y + 1, Math.min(RECT_EXTENT_MAX, brY));
         return {
           kind: "rectangle",
           x,

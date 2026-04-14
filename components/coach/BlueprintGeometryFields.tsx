@@ -3,7 +3,11 @@
 import type { ReactNode } from "react";
 import type { AgentAbilityGeometry } from "@/types/agent-ability";
 import type { MapPoint } from "@/lib/map-path";
-import { BLUEPRINT_CANVAS_SIZE } from "@/lib/agent-ability-blueprint-scale";
+import {
+  BLUEPRINT_CANVAS_SIZE,
+  BLUEPRINT_EDITOR_COORD_MAX,
+  BLUEPRINT_GEOMETRY_LENGTH_MAX,
+} from "@/lib/agent-ability-blueprint-scale";
 
 function clampCoord(n: number): number {
   if (!Number.isFinite(n)) return 0;
@@ -11,10 +15,16 @@ function clampCoord(n: number): number {
   return Math.min(BLUEPRINT_CANVAS_SIZE, Math.max(0, r));
 }
 
+function clampCoordExtended(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  const r = Math.round(n * 1000) / 1000;
+  return Math.min(BLUEPRINT_EDITOR_COORD_MAX, Math.max(0, r));
+}
+
 function clampRadius(n: number): number {
   if (!Number.isFinite(n)) return 6;
   const r = Math.round(n * 1000) / 1000;
-  return Math.min(500, Math.max(6, r));
+  return Math.min(BLUEPRINT_GEOMETRY_LENGTH_MAX, Math.max(6, r));
 }
 
 function fieldCls(): string {
@@ -125,11 +135,11 @@ export function BlueprintGeometryFields({
               />
             </label>
             <label className="block text-[11px] text-violet-400/90 sm:col-span-2">
-              r (6–500 blueprint units)
+              r (6–{BLUEPRINT_GEOMETRY_LENGTH_MAX} blueprint units)
               <input
                 type="number"
                 min={6}
-                max={500}
+                max={BLUEPRINT_GEOMETRY_LENGTH_MAX}
                 step="any"
                 value={g.r}
                 onChange={(e) =>
@@ -368,7 +378,7 @@ export function BlueprintGeometryFields({
                     kind: g.kind,
                     ax: g.ax,
                     ay: g.ay,
-                    bx: clampCoord(Number.parseFloat(e.target.value)),
+                    bx: clampCoordExtended(Number.parseFloat(e.target.value)),
                     by: g.by,
                   })
                 }
@@ -387,7 +397,7 @@ export function BlueprintGeometryFields({
                     ax: g.ax,
                     ay: g.ay,
                     bx: g.bx,
-                    by: clampCoord(Number.parseFloat(e.target.value)),
+                    by: clampCoordExtended(Number.parseFloat(e.target.value)),
                   })
                 }
                 className={fieldCls()}
@@ -398,7 +408,10 @@ export function BlueprintGeometryFields({
       );
     case "ricochet": {
       const dist = Math.hypot(g.bx - g.ax, g.by - g.ay);
-      const clampedDist = Math.max(24, Math.min(800, dist));
+      const clampedDist = Math.max(
+        24,
+        Math.min(BLUEPRINT_GEOMETRY_LENGTH_MAX, dist),
+      );
       return (
         <div className="space-y-2">
           <p className="text-[11px] leading-snug text-violet-400/90">
@@ -410,13 +423,16 @@ export function BlueprintGeometryFields({
             <input
               type="number"
               min={24}
-              max={800}
+              max={BLUEPRINT_GEOMETRY_LENGTH_MAX}
               step="any"
               value={Math.round(clampedDist * 1000) / 1000}
               onChange={(e) => {
                 const next = Math.max(
                   24,
-                  Math.min(800, Number.parseFloat(e.target.value) || clampedDist),
+                  Math.min(
+                    BLUEPRINT_GEOMETRY_LENGTH_MAX,
+                    Number.parseFloat(e.target.value) || clampedDist,
+                  ),
                 );
                 onChange({
                   kind: "ricochet",
@@ -605,14 +621,14 @@ export function BlueprintGeometryFields({
               <input
                 type="number"
                 min={1}
-                max={BLUEPRINT_CANVAS_SIZE}
+                max={BLUEPRINT_GEOMETRY_LENGTH_MAX}
                 step="any"
                 value={g.w}
                 onChange={(e) =>
                   onChange({
                     ...g,
                     w: Math.min(
-                      BLUEPRINT_CANVAS_SIZE,
+                      BLUEPRINT_GEOMETRY_LENGTH_MAX,
                       Math.max(1, Number.parseFloat(e.target.value) || 1),
                     ),
                   })
@@ -625,14 +641,14 @@ export function BlueprintGeometryFields({
               <input
                 type="number"
                 min={1}
-                max={BLUEPRINT_CANVAS_SIZE}
+                max={BLUEPRINT_GEOMETRY_LENGTH_MAX}
                 step="any"
                 value={g.h}
                 onChange={(e) =>
                   onChange({
                     ...g,
                     h: Math.min(
-                      BLUEPRINT_CANVAS_SIZE,
+                      BLUEPRINT_GEOMETRY_LENGTH_MAX,
                       Math.max(1, Number.parseFloat(e.target.value) || 1),
                     ),
                   })
@@ -693,9 +709,11 @@ export function BlueprintGeometryFields({
               />
             </label>
             <label className="block text-[11px] text-violet-400/90 sm:col-span-2">
-              r (6–500)
+              r (6–{BLUEPRINT_GEOMETRY_LENGTH_MAX})
               <input
                 type="number"
+                min={6}
+                max={BLUEPRINT_GEOMETRY_LENGTH_MAX}
                 step="any"
                 value={g.r}
                 onChange={(e) =>

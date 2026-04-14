@@ -24,6 +24,7 @@ import {
 } from "@/lib/valorant-api-abilities";
 import {
   BLUEPRINT_CANVAS_SIZE,
+  BLUEPRINT_GEOMETRY_LENGTH_MAX,
   blueprintStratSizingReadout,
   STRAT_BLUEPRINT_BBOX_TO_MAP_WIDTH_RATIO,
 } from "@/lib/agent-ability-blueprint-scale";
@@ -130,7 +131,7 @@ function buildGeometry(
       kind: "circle",
       cx: c.x,
       cy: c.y,
-      r: Math.max(6, Math.min(500, r)),
+      r: Math.max(6, Math.min(BLUEPRINT_GEOMETRY_LENGTH_MAX, r)),
     };
   }
   if (kind === "ray" && pts.length >= 2) {
@@ -152,7 +153,10 @@ function buildGeometry(
   if (kind === "ricochet" && pts.length >= 2) {
     const a = pts[0]!;
     const b = pts[1]!;
-    const dist = Math.max(24, Math.min(800, Math.hypot(b.x - a.x, b.y - a.y)));
+    const dist = Math.max(
+      24,
+      Math.min(BLUEPRINT_GEOMETRY_LENGTH_MAX, Math.hypot(b.x - a.x, b.y - a.y)),
+    );
     return {
       kind: "ricochet",
       ax: 500,
@@ -234,7 +238,7 @@ function buildGeometry(
       kind: "arc",
       cx: c.x,
       cy: c.y,
-      r: Math.max(6, Math.min(500, r)),
+      r: Math.max(6, Math.min(BLUEPRINT_GEOMETRY_LENGTH_MAX, r)),
       startDeg,
       sweepDeg,
     };
@@ -688,7 +692,13 @@ export function AgentAbilityEditor({
         }
         const dist = Math.max(
           24,
-          Math.min(800, Math.hypot(b.geometry.bx - b.geometry.ax, b.geometry.by - b.geometry.ay)),
+          Math.min(
+            BLUEPRINT_GEOMETRY_LENGTH_MAX,
+            Math.hypot(
+              b.geometry.bx - b.geometry.ax,
+              b.geometry.by - b.geometry.ay,
+            ),
+          ),
         );
         return {
           ...b,
@@ -1065,7 +1075,7 @@ export function AgentAbilityEditor({
       const dist = Math.max(
         24,
         Math.min(
-          800,
+          BLUEPRINT_GEOMETRY_LENGTH_MAX,
           Math.hypot(
             b.geometry.bx - b.geometry.ax,
             b.geometry.by - b.geometry.ay,

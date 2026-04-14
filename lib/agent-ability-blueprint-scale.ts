@@ -8,6 +8,16 @@ import {
 export const BLUEPRINT_CANVAS_SIZE = 1000;
 
 /**
+ * Upper bound for radii, rectangle sides, ricochet travel, and similar “length” fields
+ * (blueprint units). Coordinates stay in [0, {@link BLUEPRINT_EDITOR_COORD_MAX}] when needed.
+ */
+export const BLUEPRINT_GEOMETRY_LENGTH_MAX = 5000;
+
+/** Max x/y for segment endpoints that may extend past the nominal canvas. */
+export const BLUEPRINT_EDITOR_COORD_MAX =
+  BLUEPRINT_CANVAS_SIZE + BLUEPRINT_GEOMETRY_LENGTH_MAX;
+
+/**
  * The **1000×1000 blueprint canvas** spans this fraction of the strat map viewBox
  * width when rendered. Individual shapes keep their size **in blueprint units** — e.g.
  * doubling radius doubles diameter on the map (linear scale).

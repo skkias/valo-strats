@@ -68,6 +68,7 @@ import {
 import {
   stratAbilityRotationHandleDistance,
   stratAbilityRotationHandleStored,
+  stratRicochetRotationHandleDisplay,
 } from "@/lib/strat-ability-rotation-handle";
 import {
   blueprintPointToStratMapDisplay,
@@ -1194,6 +1195,16 @@ export function StratStageEditor({
                 stratOv,
               )
             : null;
+        const rotationHandlePos = isRicochetHandles
+          ? stratRicochetRotationHandleDisplay(
+              pos,
+              ab.rotationDeg ?? 0,
+              vbWidth,
+              pinS,
+            )
+          : isRectOD && rectCenterPos
+            ? rectCenterPos
+            : rotPos;
 
         const abilitySvg = bp ? (
           <StratAbilityBlueprintSvg
@@ -1267,8 +1278,8 @@ export function StratStageEditor({
                     <line
                       x1={pos.x}
                       y1={pos.y}
-                      x2={isRectOD && rectCenterPos ? rectCenterPos.x : rotPos.x}
-                      y2={isRectOD && rectCenterPos ? rectCenterPos.y : rotPos.y}
+                      x2={rotationHandlePos.x}
+                      y2={rotationHandlePos.y}
                       stroke={isRicochetHandles ? "rgb(250, 204, 21)" : accentColor}
                       opacity={isRicochetHandles ? 0.95 : 0.75}
                       strokeWidth={Math.max(vbWidth * 0.0018, 0.85) * pinS}
@@ -1280,12 +1291,17 @@ export function StratStageEditor({
                     <circle
                       cx={pos.x}
                       cy={pos.y}
-                      r={Math.max(vbWidth * (isRicochetHandles ? 0.012 : 0.01), isRicochetHandles ? 6 : 5) * pinS}
+                      r={
+                        Math.max(
+                          vbWidth * (isRicochetHandles ? 0.0065 : 0.01),
+                          isRicochetHandles ? 3.5 : 5,
+                        ) * pinS
+                      }
                       fill={isRicochetHandles ? "rgb(34, 197, 94)" : accentColor}
                       stroke={isRicochetHandles ? "#ecfccb" : sel ? "#faf5ff" : "rgb(15, 23, 42)"}
                       strokeWidth={
                         Math.max(vbWidth * 0.0024, 1) *
-                        (isRicochetHandles ? 2.6 : sel ? 2.2 : 1) *
+                        (isRicochetHandles ? 1.9 : sel ? 2.2 : 1) *
                         pinS
                       }
                       style={{
@@ -1313,14 +1329,20 @@ export function StratStageEditor({
                   {showRotationHandle ? (
                     isRicochetHandles ? (
                       <rect
-                        x={(isRectOD && rectCenterPos ? rectCenterPos.x : rotPos.x) - Math.max(vbWidth * 0.009, 4.5) * pinS}
-                        y={(isRectOD && rectCenterPos ? rectCenterPos.y : rotPos.y) - Math.max(vbWidth * 0.009, 4.5) * pinS}
-                        width={Math.max(vbWidth * 0.018, 9) * pinS}
-                        height={Math.max(vbWidth * 0.018, 9) * pinS}
-                        rx={Math.max(vbWidth * 0.002, 1.5) * pinS}
+                        x={
+                          rotationHandlePos.x -
+                          Math.max(vbWidth * 0.0065, 3.25) * pinS
+                        }
+                        y={
+                          rotationHandlePos.y -
+                          Math.max(vbWidth * 0.0065, 3.25) * pinS
+                        }
+                        width={Math.max(vbWidth * 0.013, 6.5) * pinS}
+                        height={Math.max(vbWidth * 0.013, 6.5) * pinS}
+                        rx={Math.max(vbWidth * 0.0016, 1.2) * pinS}
                         fill="rgb(250, 204, 21)"
                         stroke="#422006"
-                        strokeWidth={Math.max(vbWidth * 0.0022, 1.1) * pinS}
+                        strokeWidth={Math.max(vbWidth * 0.0018, 0.9) * pinS}
                         style={{
                           cursor: placementMode ? "default" : "grab",
                           touchAction: "none",
@@ -1339,8 +1361,8 @@ export function StratStageEditor({
                       />
                     ) : (
                       <circle
-                        cx={isRectOD && rectCenterPos ? rectCenterPos.x : rotPos.x}
-                        cy={isRectOD && rectCenterPos ? rectCenterPos.y : rotPos.y}
+                        cx={rotationHandlePos.x}
+                        cy={rotationHandlePos.y}
                         r={Math.max(vbWidth * 0.009, 4.5) * pinS}
                         fill={accentColor}
                         stroke={sel ? "#faf5ff" : "rgb(15, 23, 42)"}

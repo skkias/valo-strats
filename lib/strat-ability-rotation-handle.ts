@@ -17,3 +17,23 @@ export function stratAbilityRotationHandleStored(
     y: origin.y + dist * Math.sin(rad),
   };
 }
+
+/**
+ * Ricochet: place the rotate affordance beside the launch ray (perpendicular offset) so
+ * short paths and the origin mover stay visible; drag math still uses pointer vs origin.
+ */
+export function stratRicochetRotationHandleDisplay(
+  origin: MapPoint,
+  rotationDeg: number,
+  vbWidth: number,
+  pinScale: number,
+): MapPoint {
+  const rad = (rotationDeg * Math.PI) / 180;
+  const px = -Math.sin(rad);
+  const py = Math.cos(rad);
+  const lateral = Math.max(vbWidth * 0.02, 7) * pinScale;
+  return {
+    x: origin.x + px * lateral,
+    y: origin.y + py * lateral,
+  };
+}

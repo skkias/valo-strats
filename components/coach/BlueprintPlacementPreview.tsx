@@ -2,6 +2,7 @@
 
 import type { MapPoint } from "@/lib/map-path";
 import type { AgentAbilityShapeKind } from "@/types/agent-ability";
+import { BLUEPRINT_GEOMETRY_LENGTH_MAX } from "@/lib/agent-ability-blueprint-scale";
 
 function arcPreviewD(
   cx: number,
@@ -102,7 +103,7 @@ export function BlueprintPlacementPreview({
   if (kind === "circle" && pts.length === 1) {
     const p0 = pts[0]!;
     const r = Math.hypot(c.x - p0.x, c.y - p0.y);
-    const rr = Math.max(6, Math.min(500, r));
+    const rr = Math.max(6, Math.min(BLUEPRINT_GEOMETRY_LENGTH_MAX, r));
     return (
       <g pointerEvents="none" opacity={0.75}>
         <line
@@ -255,7 +256,7 @@ export function BlueprintPlacementPreview({
     if (pts.length === 1) {
       const p0 = pts[0]!;
       const r = Math.hypot(c.x - p0.x, c.y - p0.y);
-      const rr = Math.max(6, Math.min(500, r));
+      const rr = Math.max(6, Math.min(BLUEPRINT_GEOMETRY_LENGTH_MAX, r));
       return (
         <g pointerEvents="none" opacity={0.7}>
           <line
@@ -283,7 +284,7 @@ export function BlueprintPlacementPreview({
       const center = pts[0]!;
       const p1 = pts[1]!;
       const r = Math.hypot(p1.x - center.x, p1.y - center.y);
-      const rr = Math.max(6, Math.min(500, r));
+      const rr = Math.max(6, Math.min(BLUEPRINT_GEOMETRY_LENGTH_MAX, r));
       const startDeg = (Math.atan2(p1.y - center.y, p1.x - center.x) * 180) / Math.PI;
       const endDeg = (Math.atan2(c.y - center.y, c.x - center.x) * 180) / Math.PI;
       return (

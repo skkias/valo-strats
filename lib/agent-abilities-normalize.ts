@@ -9,6 +9,10 @@ import type { MapPoint } from "@/lib/map-path";
 import { normalizeAbilityTextureId } from "@/lib/ability-textures";
 import { shapeSupportsVisionObstructionModes } from "@/lib/ability-vision-blockers";
 import { blueprintSupportsStratAttachToAgent } from "@/lib/strat-blueprint-anchor";
+import {
+  BLUEPRINT_EDITOR_COORD_MAX,
+  BLUEPRINT_GEOMETRY_LENGTH_MAX,
+} from "@/lib/agent-ability-blueprint-scale";
 
 const SLOTS: AgentAbilitySlot[] = ["q", "e", "c", "x"];
 
@@ -37,6 +41,11 @@ const CANVAS = 1000;
 function clamp(n: number): number {
   if (!Number.isFinite(n)) return 0;
   return Math.min(CANVAS, Math.max(0, n));
+}
+
+function clampExtendedCoord(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(BLUEPRINT_EDITOR_COORD_MAX, Math.max(0, n));
 }
 
 function clampPoint(p: MapPoint): MapPoint {
@@ -100,7 +109,10 @@ function normalizeGeometry(
       kind: "circle",
       cx: clamp(Number(o.cx)),
       cy: clamp(Number(o.cy)),
-      r: Math.min(500, Math.max(1, Number(o.r) || 1)),
+      r: Math.min(
+        BLUEPRINT_GEOMETRY_LENGTH_MAX,
+        Math.max(1, Number(o.r) || 1),
+      ),
     };
   }
   if (k === "ray" && shapeKind === "ray") {
@@ -152,8 +164,14 @@ function normalizeGeometry(
   if (k === "rectangle" && shapeKind === "rectangle") {
     const x = clamp(Number(o.x));
     const y = clamp(Number(o.y));
-    const w = Math.min(CANVAS, Math.max(0, Number(o.w) || 0));
-    const h = Math.min(CANVAS, Math.max(0, Number(o.h) || 0));
+    const w = Math.min(
+      BLUEPRINT_GEOMETRY_LENGTH_MAX,
+      Math.max(0, Number(o.w) || 0),
+    );
+    const h = Math.min(
+      BLUEPRINT_GEOMETRY_LENGTH_MAX,
+      Math.max(0, Number(o.h) || 0),
+    );
     const rotationDeg =
       typeof o.rotationDeg === "number" && Number.isFinite(o.rotationDeg)
         ? o.rotationDeg
@@ -165,7 +183,10 @@ function normalizeGeometry(
       kind: "arc",
       cx: clamp(Number(o.cx)),
       cy: clamp(Number(o.cy)),
-      r: Math.min(500, Math.max(1, Number(o.r) || 1)),
+      r: Math.min(
+        BLUEPRINT_GEOMETRY_LENGTH_MAX,
+        Math.max(1, Number(o.r) || 1),
+      ),
       startDeg: Number.isFinite(Number(o.startDeg)) ? Number(o.startDeg) : 0,
       sweepDeg: Number.isFinite(Number(o.sweepDeg)) ? Number(o.sweepDeg) : 90,
     };
@@ -175,8 +196,8 @@ function normalizeGeometry(
       kind: "movement",
       ax: clamp(Number(o.ax)),
       ay: clamp(Number(o.ay)),
-      bx: clamp(Number(o.bx)),
-      by: clamp(Number(o.by)),
+      bx: clampExtendedCoord(Number(o.bx)),
+      by: clampExtendedCoord(Number(o.by)),
     };
   }
   if (k === "ricochet" && shapeKind === "ricochet") {
@@ -189,7 +210,7 @@ function normalizeGeometry(
     const dist = Math.max(
       24,
       Math.min(
-        800,
+        BLUEPRINT_GEOMETRY_LENGTH_MAX,
         Math.hypot(
           Number.isFinite(rawBx) ? rawBx - (Number.isFinite(rawAx) ? rawAx : ax) : 200,
           Number.isFinite(rawBy) ? rawBy - (Number.isFinite(rawAy) ? rawAy : ay) : 0,
@@ -200,7 +221,7 @@ function normalizeGeometry(
       kind: "ricochet",
       ax,
       ay,
-      bx: clamp(ax + dist),
+      bx: clampExtendedCoord(ax + dist),
       by: ay,
     };
   }
