@@ -548,13 +548,13 @@ export function CoachDashboard({
                 .
               </p>
             </div>
-            <div className="grid min-w-0 grid-cols-1 gap-y-5 sm:col-span-2 sm:grid-cols-2 sm:gap-y-0">
-              <div className="min-w-0 px-3 sm:px-0 sm:pl-3 sm:pr-2">
+            <div className="grid min-w-0 grid-cols-1 gap-y-5 sm:col-span-2 sm:grid-cols-[auto_1fr] sm:gap-y-0">
+              <div className="min-w-0 w-max max-w-full justify-self-start px-3 sm:px-0 sm:pl-3 sm:pr-2">
                 <div className="label" id="strat-side-label">
                   Side
                 </div>
                 <div className="mt-1 flex min-h-27 items-center sm:min-h-29">
-                  <div className="w-full min-w-0 py-1 sm:py-0.5">
+                  <div className="w-max max-w-full min-w-0 py-1 sm:py-0.5">
                     <StratSideToggle
                       value={form.side}
                       labelledBy="strat-side-label"
@@ -563,11 +563,11 @@ export function CoachDashboard({
                   </div>
                 </div>
               </div>
-              <div className="min-w-0 px-3 sm:px-0 sm:pl-2 sm:pr-3">
+              <div className="min-w-0 w-full px-3 sm:px-0 sm:pl-2 sm:pr-3">
                 <div className="label" id="strat-difficulty-label">
                   Difficulty
                 </div>
-                <div className="mt-1 flex min-h-27 items-center sm:min-h-29">
+                <div className="mt-1 flex min-h-27 w-full items-stretch sm:min-h-29">
                   <div className="w-full min-w-0">
                     <DifficultyPicker
                       value={form.difficulty}

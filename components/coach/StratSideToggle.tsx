@@ -5,8 +5,7 @@ import { Swords, Shield } from "lucide-react";
 
 /**
  * Attack / Defense as a physical-style toggle (replaces a two-option select).
- * Labels stack on the left; the switch stays on the right so narrow widths wrap text
- * instead of squeezing the control between side names.
+ * Labels stack on the left with the switch immediately beside them (no flex grow between).
  */
 export function StratSideToggle({
   value,
@@ -22,9 +21,9 @@ export function StratSideToggle({
   const isAttack = value === "atk";
 
   return (
-    <div className="w-full min-w-0" role="group" aria-labelledby={labelledBy}>
-      <div className="flex min-w-0 flex-row items-center gap-3 sm:gap-4">
-        <div className="flex min-h-10 min-w-0 flex-1 flex-col justify-center gap-1">
+    <div className="w-max max-w-full min-w-0" role="group" aria-labelledby={labelledBy}>
+      <div className="flex w-max min-w-0 max-w-full flex-row items-center gap-2">
+        <div className="flex min-h-10 shrink-0 flex-col justify-center gap-1">
           <span
             className={`flex min-w-0 items-start gap-1.5 text-sm font-semibold transition ${
               isAttack ? "text-violet-100" : "text-violet-500/45"
