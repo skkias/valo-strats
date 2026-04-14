@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentAbilityBlueprint, AgentAbilityGeometry } from "@/types/agent-ability";
+import {
+  effectivePointMarkStyle,
+  effectivePointMarkSymbolId,
+} from "@/lib/point-blueprint-mark";
+import { PointMarkSymbolGraphic } from "@/components/PointBlueprintMarkDraw";
 import type { MapPoint } from "@/lib/map-path";
 import { clientToSvgPoint } from "@/lib/svg-coords";
 import {
@@ -175,7 +180,14 @@ export function BlueprintShapeHandles({
   switch (geom.kind) {
     case "point":
       {
+        const markStyle = effectivePointMarkStyle(blueprint);
+        const iconScale = Math.min(
+          3,
+          Math.max(0.12, blueprint.pointIconScale ?? 1),
+        );
+        const symScale = (vb * 0.019 * iconScale) / 12;
         const iconUrl =
+          markStyle === "ability_icon" &&
           typeof pointDisplayIconUrl === "string" &&
           pointDisplayIconUrl.startsWith("http") &&
           !pointIconFailed
@@ -183,6 +195,10 @@ export function BlueprintShapeHandles({
             : null;
         const iconSize = vb * 0.05;
         const half = iconSize / 2;
+        const hitR =
+          markStyle === "symbol"
+            ? Math.max(r * 1.35, vb * 0.028 * iconScale)
+            : Math.max(r * 1.25, iconUrl ? half * 0.95 : r);
         return (
           <g style={{ pointerEvents: "auto" }} data-blueprint-handles>
             <g
@@ -200,6 +216,17 @@ export function BlueprintShapeHandles({
                   onError={() => setPointIconFailed(true)}
                   style={{ pointerEvents: "none" }}
                 />
+              ) : markStyle === "symbol" ? (
+                <g
+                  transform={`translate(${geom.x},${geom.y}) scale(${symScale})`}
+                  style={{ pointerEvents: "none" }}
+                >
+                  <PointMarkSymbolGraphic
+                    symbolId={effectivePointMarkSymbolId(blueprint)}
+                    stroke={stroke}
+                    swMap={vb * 0.004}
+                  />
+                </g>
               ) : (
                 <circle
                   cx={geom.x}
@@ -211,19 +238,31 @@ export function BlueprintShapeHandles({
                   style={{ pointerEvents: "none" }}
                 />
               )}
+              {iconUrl ? (
+                <circle
+                  cx={geom.x}
+                  cy={geom.y}
+                  r={half * 0.72}
+                  fill="none"
+                  stroke={stroke}
+                  strokeWidth={vb * 0.002}
+                  style={{ pointerEvents: "none" }}
+                />
+              ) : markStyle === "dot" || (markStyle === "ability_icon" && !iconUrl) ? (
+                <circle
+                  cx={geom.x}
+                  cy={geom.y}
+                  r={r}
+                  fill="none"
+                  stroke={stroke}
+                  strokeWidth={vb * 0.002}
+                  style={{ pointerEvents: "none" }}
+                />
+              ) : null}
               <circle
                 cx={geom.x}
                 cy={geom.y}
-                r={iconUrl ? half * 0.72 : r}
-                fill="none"
-                stroke={stroke}
-                strokeWidth={vb * 0.002}
-                style={{ pointerEvents: "none" }}
-              />
-              <circle
-                cx={geom.x}
-                cy={geom.y}
-                r={Math.max(r * 1.25, half * 0.95)}
+                r={hitR}
                 fill="transparent"
               />
             </g>

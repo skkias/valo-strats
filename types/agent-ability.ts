@@ -62,6 +62,26 @@ export type AbilityTextureId =
 /** How this blueprint is dropped on the strat map. */
 export type StratPlacementMode = "center" | "origin_direction";
 
+/**
+ * Point-shape pin on the strat map: Valorant API art, a simple dot, or a preset vector mark.
+ * Legacy: `pointIconShow === false` is treated as `dot` when `pointMarkStyle` is omitted.
+ */
+export type PointMarkStyle = "ability_icon" | "dot" | "symbol";
+
+/** Built-in scalable SVG marks for `pointMarkStyle === "symbol"`. */
+export const POINT_MARK_SYMBOL_IDS = [
+  "crosshair",
+  "diamond",
+  "pin",
+  "star",
+  "bolt",
+  "square",
+  "triangle",
+  "plus_ring",
+] as const;
+
+export type PointMarkSymbolId = (typeof POINT_MARK_SYMBOL_IDS)[number];
+
 /** All coordinates are in blueprint canvas space (default viewBox 0 0 1000 1000). */
 export type AgentAbilityGeometry =
   | { kind: "point"; x: number; y: number }
@@ -161,10 +181,18 @@ export interface AgentAbilityBlueprint {
   /**
    * Point shapes only: show Valorant API ability icon on the strat map when a URL exists.
    * `false` = always use the colored dot. Default / omitted = show icon when available.
+   * Prefer {@link pointMarkStyle}; legacy rows may only set this.
    */
   pointIconShow?: boolean;
   /**
-   * Point shapes only: multiplies the on-map icon size in blueprint space (default `1`).
+   * Point shapes only: how the pin renders (icon, dot, or preset symbol).
+   * Omitted = {@link pointMarkStyle} derived from `pointIconShow` and defaults to ability icon.
+   */
+  pointMarkStyle?: PointMarkStyle;
+  /** When `pointMarkStyle === "symbol"`, which preset mark to draw. */
+  pointMarkSymbolId?: PointMarkSymbolId;
+  /**
+   * Point shapes only: multiplies the on-map icon / dot / symbol size in blueprint space (default `1`).
    */
   pointIconScale?: number;
   /**

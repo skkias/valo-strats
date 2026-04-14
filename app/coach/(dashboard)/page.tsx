@@ -21,7 +21,7 @@ export default async function CoachPage() {
   }
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-hidden px-2 pb-3 pt-2 md:px-4 md:pb-4">
+    <main className="flex w-full min-w-0 flex-col overflow-y-auto px-2 pt-2 pb-2 md:min-h-0 md:flex-1 md:overflow-hidden md:px-4 md:pt-4 md:pb-4">
       <CoachDashboard
         initialAgents={agents}
         initialMaps={maps}

@@ -9,7 +9,15 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  MousePointerClick,
+  Move,
+  Plus,
+  ScanEye,
+  Trash2,
+} from "lucide-react";
 import type { Agent, GameMap } from "@/types/catalog";
 import type {
   StratPlacedAbility,
@@ -70,6 +78,7 @@ import {
   stratAbilityRotationHandleDistance,
   stratAbilityRotationHandleStored,
   stratRicochetRotationHandleDisplay,
+  stratToggleableRayToggleOffsetFromLine,
 } from "@/lib/strat-ability-rotation-handle";
 import {
   blueprintPointToStratMapDisplay,
@@ -1019,7 +1028,7 @@ export function StratStageEditor({
   const mapPlacementStatusText = useMemo(() => {
     if (!activeStage) return "";
     if (!placementMode) {
-      return "Click a comp portrait above to place an agent or ability. Right-click a token for vision cone. Drag tokens and ability pins to adjust. Delete/Backspace removes the selection.";
+      return "";
     }
     if (placementMode.kind === "agent") {
       const r = roster.find((x) => x.slug === placementMode.slug);
@@ -1413,29 +1422,50 @@ export function StratStageEditor({
         const rotateHandleSize = rotateHandleHalf * 2;
         const rayToggleDisplayPos =
           isToggleableRay && bp && bp.geometry.kind === "ray"
-            ? blueprintPointToStratMapDisplay(
-                bp.geometry.curve
+            ? (() => {
+                const g = bp.geometry;
+                const midBp = g.curve
                   ? {
-                      x:
-                        0.25 * bp.geometry.x1 +
-                        0.5 * bp.geometry.curve.cx +
-                        0.25 * bp.geometry.x2,
-                      y:
-                        0.25 * bp.geometry.y1 +
-                        0.5 * bp.geometry.curve.cy +
-                        0.25 * bp.geometry.y2,
+                      x: 0.25 * g.x1 + 0.5 * g.curve.cx + 0.25 * g.x2,
+                      y: 0.25 * g.y1 + 0.5 * g.curve.cy + 0.25 * g.y2,
                     }
-                  : {
-                      x: (bp.geometry.x1 + bp.geometry.x2) / 2,
-                      y: (bp.geometry.y1 + bp.geometry.y2) / 2,
-                    },
-                bp,
-                pos.x,
-                pos.y,
-                vbWidth,
-                ab.rotationDeg ?? 0,
-                stratOv,
-              )
+                  : { x: (g.x1 + g.x2) / 2, y: (g.y1 + g.y2) / 2 };
+                const mid = blueprintPointToStratMapDisplay(
+                  midBp,
+                  bp,
+                  pos.x,
+                  pos.y,
+                  vbWidth,
+                  ab.rotationDeg ?? 0,
+                  stratOv,
+                );
+                const segStart = blueprintPointToStratMapDisplay(
+                  { x: g.x1, y: g.y1 },
+                  bp,
+                  pos.x,
+                  pos.y,
+                  vbWidth,
+                  ab.rotationDeg ?? 0,
+                  stratOv,
+                );
+                const segEnd = blueprintPointToStratMapDisplay(
+                  { x: g.x2, y: g.y2 },
+                  bp,
+                  pos.x,
+                  pos.y,
+                  vbWidth,
+                  ab.rotationDeg ?? 0,
+                  stratOv,
+                );
+                return stratToggleableRayToggleOffsetFromLine(
+                  mid,
+                  segStart,
+                  segEnd,
+                  [pos, rotationHandlePos],
+                  vbWidth,
+                  pinS,
+                );
+              })()
             : null;
         const rayToggleOn = ab.toggledOn ?? !legacyRayStartsDown;
 
@@ -1787,8 +1817,8 @@ export function StratStageEditor({
   }
 
   const stageSelectorUnderMap = (
-    <div className="mt-2 shrink-0 rounded-lg border border-violet-800/40 bg-slate-950/50 px-3 py-2.5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="mt-2 min-w-0 max-w-full shrink-0 overflow-x-auto rounded-lg border border-violet-800/40 bg-slate-950/50 px-3 py-2.5">
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           {stages.map((st, idx) => (
             <div key={st.id} className="flex items-center gap-1">
@@ -1855,8 +1885,8 @@ export function StratStageEditor({
       Add strat stages data (save error). Try refreshing the coach page.
     </p>
   ) : (
-    <div className="flex min-h-0 w-full min-w-0 flex-col">
-        <div className="rounded-lg border border-violet-800/40 bg-slate-950/50 px-3 py-2.5">
+    <div className="flex h-full max-h-[min(72dvh,800px)] min-h-0 w-full min-w-0 flex-col lg:max-h-none">
+        <div className="shrink-0 rounded-lg border border-violet-800/40 bg-slate-950/50 px-3 py-2.5">
           <div className="flex items-center justify-between gap-2">
             <label
               className="text-xs font-medium text-violet-200/90"
@@ -2044,16 +2074,16 @@ export function StratStageEditor({
 
   const mapPanel =
     activeStage ? (
-      <div className="flex min-h-[min(56dvh,720px)] w-full min-w-0 flex-1 flex-col lg:min-h-0 lg:flex-1">
+      <div className="flex min-h-[min(44dvh,260px)] w-full min-w-0 flex-1 flex-col lg:min-h-0 lg:flex-1">
         <div className="relative z-20 shrink-0 border-b border-violet-800/40 bg-slate-950/95 px-2 py-2">
-          <div className="flex flex-wrap items-stretch justify-between gap-3">
+          <div className="flex min-w-0 flex-wrap items-stretch justify-between gap-3">
             {roster.length === 0 ? (
               <p className="text-xs text-amber-200/85">
                 Add agents in the Details tab comp to use the portrait tray above the
                 map.
               </p>
             ) : (
-              <div className="flex flex-wrap items-start gap-2">
+              <div className="flex min-w-0 max-w-full flex-1 flex-wrap items-start gap-2">
                 {roster.map((r) => {
                   const agentPlacedOnStage = activeStage.agents.some(
                     (x) => x.agentSlug === r.slug,
@@ -2095,7 +2125,7 @@ export function StratStageEditor({
                         )}
                       </button>
                       {trayOpen ? (
-                        <div className="absolute left-0 top-[calc(100%+6px)] z-30 min-w-[220px] max-w-[min(320px,92vw)] rounded-xl border border-violet-700/50 bg-slate-950 px-2 py-2 shadow-2xl shadow-violet-950/50">
+                        <div className="absolute left-0 top-[calc(100%+6px)] z-30 w-max min-w-[220px] max-w-[min(480px,calc(100vw-1.25rem))] rounded-xl border border-violet-700/50 bg-slate-950 px-2 py-2 shadow-2xl shadow-violet-950/50">
                           <p className="mb-1.5 text-[10px] font-medium text-violet-400/90">
                             {r.name}
                           </p>
@@ -2124,7 +2154,7 @@ export function StratStageEditor({
                           >
                             Place agent token
                           </button>
-                          <div className="mt-2 flex flex-wrap gap-1 border-t border-violet-800/35 pt-2">
+                          <div className="mt-2 flex flex-nowrap gap-1 overflow-x-auto overscroll-x-contain border-t border-violet-800/35 pt-2 pb-0.5 [scrollbar-gutter:stable]">
                             {r.abilityPlacementOptions.map((opt) => {
                               const slotForLookup: StratPlacedAbility["slot"] =
                                 opt.kind === "key" ? opt.slot : "custom";
@@ -2187,7 +2217,7 @@ export function StratStageEditor({
                                     );
                                     focusMapSvg();
                                   }}
-                                  className={`flex min-h-9 min-w-13 max-w-30 flex-col items-center justify-center rounded border px-1 py-0.5 text-left leading-tight transition ${
+                                  className={`flex min-h-9 w-19 shrink-0 flex-col items-center justify-center rounded border px-1 py-0.5 text-left leading-tight transition sm:w-21 ${
                                     active
                                       ? "border-cyan-400 bg-cyan-950/50 text-white"
                                       : "border-violet-800/50 bg-slate-950/70 text-violet-200"
@@ -2271,10 +2301,64 @@ export function StratStageEditor({
             {overlay}
           </StratMapViewer>
         </div>
-        <div className="mt-2 shrink-0 rounded-lg border border-violet-800/40 bg-slate-950/55 px-3 py-2.5">
-          <p className="text-sm font-medium leading-snug text-violet-100/95">
-            {mapPlacementStatusText}
-          </p>
+        <div className="mt-2 min-w-0 shrink-0 rounded-lg border border-violet-800/40 bg-slate-950/55 px-3 py-2.5">
+          {mapPlacementStatusText ? (
+            <p className="wrap-anywhere text-sm font-medium leading-snug text-violet-100/95">
+              {mapPlacementStatusText}
+            </p>
+          ) : activeStage ? (
+            <div className="space-y-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-400/75">
+                Map controls
+              </p>
+              <ul className="grid gap-2 sm:grid-cols-2">
+                <li className="flex gap-2 rounded-md border border-violet-800/25 bg-slate-950/50 px-2 py-1.5">
+                  <MousePointerClick
+                    className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-400/90"
+                    aria-hidden
+                  />
+                  <span className="text-[11px] leading-snug text-violet-100/90">
+                    <span className="font-semibold text-violet-200">Place</span>
+                    <span className="text-violet-400/90"> · </span>
+                    Open a portrait, choose agent or ability, then click the map.
+                  </span>
+                </li>
+                <li className="flex gap-2 rounded-md border border-violet-800/25 bg-slate-950/50 px-2 py-1.5">
+                  <ScanEye
+                    className="mt-0.5 h-3.5 w-3.5 shrink-0 text-fuchsia-400/85"
+                    aria-hidden
+                  />
+                  <span className="text-[11px] leading-snug text-violet-100/90">
+                    <span className="font-semibold text-violet-200">Vision</span>
+                    <span className="text-violet-400/90"> · </span>
+                    Right-click an agent token for cone options.
+                  </span>
+                </li>
+                <li className="flex gap-2 rounded-md border border-violet-800/25 bg-slate-950/50 px-2 py-1.5">
+                  <Move
+                    className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400/85"
+                    aria-hidden
+                  />
+                  <span className="text-[11px] leading-snug text-violet-100/90">
+                    <span className="font-semibold text-violet-200">Adjust</span>
+                    <span className="text-violet-400/90"> · </span>
+                    Drag tokens and ability pins to move them.
+                  </span>
+                </li>
+                <li className="flex gap-2 rounded-md border border-violet-800/25 bg-slate-950/50 px-2 py-1.5">
+                  <Trash2
+                    className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-400/80"
+                    aria-hidden
+                  />
+                  <span className="text-[11px] leading-snug text-violet-100/90">
+                    <span className="font-semibold text-violet-200">Remove</span>
+                    <span className="text-violet-400/90"> · </span>
+                    Press Delete or Backspace to clear the selection.
+                  </span>
+                </li>
+              </ul>
+            </div>
+          ) : null}
         </div>
         {stageSelectorUnderMap}
         {agentVisionContextMenu ? (

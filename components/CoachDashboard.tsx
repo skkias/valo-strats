@@ -30,6 +30,7 @@ import {
   resolveMapIdForStrat,
   slotsFromStratAgents,
 } from "@/lib/coach-strat-form";
+import { CoachAgentSlotPicker } from "@/components/coach/CoachAgentSlotPicker";
 import { DifficultyPicker } from "@/components/coach/DifficultyPicker";
 import { StratSideToggle } from "@/components/coach/StratSideToggle";
 
@@ -333,9 +334,9 @@ export function CoachDashboard({
   );
 
   return (
-    <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden">
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
-        <aside className="flex max-h-[42vh] w-full shrink-0 flex-col border-violet-900/40 bg-slate-950/65 md:max-h-none md:h-full md:min-h-0 md:w-72 md:border-r">
+    <div className="flex w-full min-w-0 flex-col overflow-visible md:min-h-0 md:flex-1 md:overflow-hidden">
+      <div className="flex w-full min-w-0 flex-col overflow-visible md:min-h-0 md:flex-1 md:flex-row md:overflow-hidden">
+        <aside className="flex max-h-[42vh] w-full shrink-0 flex-col border-violet-900/40 bg-slate-950/65 md:max-h-none md:min-h-0 md:w-72 md:shrink-0 md:border-r md:self-stretch">
           <div className="flex gap-2 border-b border-violet-900/35 p-3">
             <button
               type="button"
@@ -421,17 +422,17 @@ export function CoachDashboard({
           </div>
         </aside>
 
-        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain">
-          <div className="w-full max-w-none space-y-6 px-4 pb-16 pt-4 md:px-6 lg:px-8">
+        <main className="flex w-full min-w-0 flex-col overflow-visible md:min-h-0 md:flex-1 md:overflow-hidden">
+          <div className="flex w-full max-w-none min-w-0 flex-col gap-6 px-4 pt-4 pb-4 md:min-h-0 md:flex-1 md:overflow-hidden md:px-6 lg:px-8">
       {catalogError && (
         <p
-          className="rounded-lg border border-fuchsia-900/50 bg-fuchsia-950/30 px-4 py-3 text-sm text-fuchsia-200"
+          className="min-w-0 shrink-0 break-words rounded-lg border border-fuchsia-900/50 bg-fuchsia-950/30 px-4 py-3 text-sm text-fuchsia-200"
           role="alert"
         >
           {catalogError}{" "}
           <span className="text-fuchsia-300/80">
             Run the SQL in{" "}
-            <code className="rounded bg-black/30 px-1">
+            <code className="mt-1 block max-w-full overflow-x-auto rounded bg-black/30 px-1 py-0.5 text-xs break-all">
               supabase/migrations/20260410120000_agents_maps.sql
             </code>{" "}
             in the Supabase SQL editor, then refresh.
@@ -441,37 +442,37 @@ export function CoachDashboard({
 
       {banner && (
         <p
-          className="rounded-lg border border-violet-800/40 bg-slate-950/60 px-4 py-3 text-sm text-slate-200"
+          className="min-w-0 shrink-0 break-words rounded-lg border border-violet-800/40 bg-slate-950/60 px-4 py-3 text-sm text-slate-200"
           role="status"
         >
           {banner}
         </p>
       )}
 
-      <section className="rounded-xl border border-violet-500/20 bg-slate-950/45 p-6 shadow-lg shadow-violet-950/15 backdrop-blur-sm">
-        <h2 className="text-lg font-semibold text-white">
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-violet-500/20 bg-slate-950/45 p-4 shadow-lg shadow-violet-950/15 backdrop-blur-sm sm:p-6">
+        <h2 className="shrink-0 text-lg font-semibold text-white">
           {editingId ? "Edit strat" : "New strat"}
         </h2>
         {!catalogReady && !catalogError ? (
-          <p className="mt-4 text-sm text-amber-200/80">
+          <p className="mt-4 shrink-0 text-sm text-amber-200/80">
             Add agents and maps in Supabase (see migration). Until the catalog has
             rows, you cannot save strats with the new picker.
           </p>
         ) : null}
         <form
           onSubmit={(e) => void handleSubmit(e)}
-          className="mt-6 flex flex-col gap-6"
+          className="mt-6 flex min-h-0 min-w-0 flex-1 flex-col gap-6"
         >
           <div
             ref={splitContainerRef}
-            className="flex w-full min-w-0 flex-col gap-8 lg:flex-row lg:items-stretch lg:gap-0"
+            className="flex min-h-0 w-full min-w-0 flex-1 flex-col gap-8 lg:flex-row lg:items-stretch lg:gap-0 lg:overflow-hidden"
             style={
               {
                 "--coach-split-pct": `${splitPct}%`,
               } as React.CSSProperties
             }
           >
-            <div className="flex min-h-0 w-full min-w-0 flex-col gap-3 lg:flex-[0_0_var(--coach-split-pct)] lg:min-h-[min(76dvh,940px)]">
+            <div className="flex min-h-0 w-full min-w-0 flex-col gap-3 overflow-hidden lg:flex-[0_0_var(--coach-split-pct)] lg:min-h-0">
               <div className="flex shrink-0 gap-1 rounded-lg border border-violet-800/45 bg-slate-950/70 p-0.5">
                 <button
                   type="button"
@@ -497,14 +498,14 @@ export function CoachDashboard({
                 </button>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-0.5 [scrollbar-gutter:stable]">
+              <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain pr-0.5 [scrollbar-gutter:stable]">
                 <div
                   className={
                     coachFormTab === "details" ? "space-y-4" : "hidden"
                   }
                   aria-hidden={coachFormTab !== "details"}
                 >
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid min-w-0 gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <label className="label" htmlFor="title">
                 Title
@@ -548,27 +549,37 @@ export function CoachDashboard({
                 .
               </p>
             </div>
-            <div>
-              <div className="label" id="strat-side-label">
-                Side
+            <div className="grid min-w-0 grid-cols-1 gap-y-5 sm:col-span-2 sm:grid-cols-2 sm:gap-x-8 sm:gap-y-0 md:gap-x-10 lg:gap-x-14">
+              <div className="min-w-0 sm:pr-3 md:pr-4">
+                <div className="label" id="strat-side-label">
+                  Side
+                </div>
+                <div className="mt-1 flex min-h-27 items-center sm:min-h-29">
+                  <div className="w-full min-w-0 py-1 sm:py-0.5">
+                    <StratSideToggle
+                      value={form.side}
+                      labelledBy="strat-side-label"
+                      onChange={(side) => setForm((f) => ({ ...f, side }))}
+                    />
+                  </div>
+                </div>
               </div>
-              <StratSideToggle
-                value={form.side}
-                labelledBy="strat-side-label"
-                onChange={(side) => setForm((f) => ({ ...f, side }))}
-              />
-            </div>
-            <div>
-              <div className="label" id="strat-difficulty-label">
-                Difficulty
+              <div className="min-w-0 sm:pl-2 md:pl-3">
+                <div className="label" id="strat-difficulty-label">
+                  Difficulty
+                </div>
+                <div className="mt-1 flex min-h-27 items-center sm:min-h-29">
+                  <div className="w-full min-w-0">
+                    <DifficultyPicker
+                      value={form.difficulty}
+                      labelledBy="strat-difficulty-label"
+                      onChange={(n) =>
+                        setForm((f) => ({ ...f, difficulty: String(n) }))
+                      }
+                    />
+                  </div>
+                </div>
               </div>
-              <DifficultyPicker
-                value={form.difficulty}
-                labelledBy="strat-difficulty-label"
-                onChange={(n) =>
-                  setForm((f) => ({ ...f, difficulty: String(n) }))
-                }
-              />
             </div>
             <div className="sm:col-span-2">
               <span className="label">Team comp (5 agents)</span>
@@ -577,36 +588,25 @@ export function CoachDashboard({
               </p>
               <div className="mt-2 grid gap-2 sm:grid-cols-5">
                 {([0, 1, 2, 3, 4] as const).map((i) => (
-                  <div key={i}>
-                    <label className="sr-only" htmlFor={`agent-${i}`}>
-                      Agent {i + 1}
-                    </label>
-                    <select
-                      id={`agent-${i}`}
-                      value={form.agentSlots[i]}
-                      onChange={(e) => {
-                        const next = [...form.agentSlots] as [
-                          string,
-                          string,
-                          string,
-                          string,
-                          string,
-                        ];
-                        next[i] = e.target.value;
-                        setForm((f) => ({ ...f, agentSlots: next }));
-                      }}
-                      className="input-field mt-0"
-                      required={catalogReady}
-                      disabled={!catalogReady}
-                    >
-                      <option value="">—</option>
-                      {initialAgents.map((a) => (
-                        <option key={a.slug} value={a.slug}>
-                          {a.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  <CoachAgentSlotPicker
+                    key={i}
+                    slotIndex={i}
+                    value={form.agentSlots[i]}
+                    agents={initialAgents}
+                    disabled={!catalogReady}
+                    required={catalogReady}
+                    onChange={(slug) => {
+                      const next = [...form.agentSlots] as [
+                        string,
+                        string,
+                        string,
+                        string,
+                        string,
+                      ];
+                      next[i] = slug;
+                      setForm((f) => ({ ...f, agentSlots: next }));
+                    }}
+                  />
                 ))}
               </div>
             </div>
@@ -740,8 +740,8 @@ export function CoachDashboard({
                     placeholder="Post-plant"
                   />
                 </div>
-                <div className="flex gap-2">
-                  <label className="btn-secondary inline-flex cursor-pointer items-center gap-2">
+                <div className="flex min-w-0 shrink-0 flex-wrap gap-2">
+                  <label className="btn-secondary inline-flex min-w-0 cursor-pointer items-center gap-2">
                     <Upload className="h-4 w-4" />
                     Upload
                     <input
@@ -786,11 +786,13 @@ export function CoachDashboard({
 
                 <div
                   className={
-                    coachFormTab === "stages" ? "space-y-3" : "hidden"
+                    coachFormTab === "stages"
+                      ? "flex min-h-[min(220px,38dvh)] w-full min-w-0 flex-col gap-3 lg:min-h-0 lg:flex-1"
+                      : "hidden"
                   }
                   aria-hidden={coachFormTab !== "stages"}
                 >
-                  <div>
+                  <div className="min-w-0 shrink-0">
                     <h3 className="text-sm font-semibold text-white">
                       Strat map &amp; stages
                     </h3>
@@ -808,7 +810,7 @@ export function CoachDashboard({
                   </div>
                   <div
                     ref={setStagesControlsMountEl}
-                    className="min-h-[200px] flex-1"
+                    className="flex min-h-0 w-full min-w-0 flex-1 flex-col overflow-hidden"
                   />
                 </div>
               </div>
@@ -822,11 +824,11 @@ export function CoachDashboard({
               onMouseDown={onSplitMouseDown}
             />
 
-            <div className="flex min-h-0 min-w-0 w-full flex-col lg:sticky lg:top-4 lg:max-h-[min(calc(100dvh-5rem),1100px)] lg:flex-1 lg:overflow-hidden lg:rounded-xl lg:border lg:border-violet-800/35 lg:bg-slate-950/35 lg:p-2">
+            <div className="flex min-h-0 min-w-0 w-full flex-1 flex-col lg:overflow-hidden lg:rounded-xl lg:border lg:border-violet-800/35 lg:bg-slate-950/35 lg:p-2">
               {selectedStratMap ? (
                 <div
                   ref={setStratMapMountEl}
-                  className="flex min-h-[min(56dvh,400px)] min-w-0 flex-1 flex-col lg:min-h-0"
+                  className="flex min-h-[min(44dvh,280px)] min-w-0 flex-1 flex-col lg:min-h-0"
                 />
               ) : (
                 <div className="rounded-lg border border-dashed border-violet-800/45 bg-slate-950/40 px-4 py-10 text-center">
@@ -856,7 +858,7 @@ export function CoachDashboard({
               />
             )}
 
-          <div className="flex flex-wrap gap-3 border-t border-violet-900/35 pt-4">
+          <div className="flex min-w-0 shrink-0 flex-wrap gap-3 border-t border-violet-900/35 pt-4">
             <button
               type="submit"
               disabled={saving || !catalogReady}

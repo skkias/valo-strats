@@ -116,8 +116,24 @@ body {
 }
 
 @layer components {
+  /**
+   * Strat map ability blueprints: invisible fat stroke receives pointer events;
+   * hover brightens the visible stroke so thin lines are easier to target.
+   */
+  g.strat-ability-line-group path.strat-ability-line-visible,
+  g.strat-ability-line-group line.strat-ability-line-visible {
+    transition:
+      opacity 0.14s ease,
+      filter 0.14s ease;
+  }
+  g.strat-ability-line-group:hover path.strat-ability-line-visible,
+  g.strat-ability-line-group:hover line.strat-ability-line-visible {
+    opacity: 1;
+    filter: brightness(1.2) drop-shadow(0 0 3px rgb(255 255 255 / 0.3));
+  }
+
   .input-field {
-    @apply w-full rounded-lg border border-violet-800/50 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-violet-300/35;
+    @apply min-w-0 max-w-full w-full rounded-lg border border-violet-800/50 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-violet-300/35;
     @apply outline-none ring-violet-500/0 transition focus:border-violet-500/70 focus:ring-2 focus:ring-violet-500/25;
   }
 

@@ -5,6 +5,10 @@ import type {
   AgentAbilitySlot,
   StratPlacementMode,
 } from "@/types/agent-ability";
+import {
+  normalizePointMarkStyle,
+  normalizePointMarkSymbolId,
+} from "@/lib/point-blueprint-mark";
 import type { MapPoint } from "@/lib/map-path";
 import { normalizeAbilityTextureId } from "@/lib/ability-textures";
 import { shapeSupportsVisionObstructionModes } from "@/lib/ability-vision-blockers";
@@ -373,6 +377,12 @@ export function normalizeAgentAbilityBlueprint(raw: unknown): AgentAbilityBluepr
   const pointIconShow = normalizePointIconShow(
     o.pointIconShow ?? o.point_icon_show,
   );
+  const pointMarkStyle = normalizePointMarkStyle(
+    o.pointMarkStyle ?? o.point_mark_style,
+  );
+  const pointMarkSymbolId = normalizePointMarkSymbolId(
+    o.pointMarkSymbolId ?? o.point_mark_symbol_id,
+  );
   const pointIconScale = normalizePointIconScale(
     o.pointIconScale ?? o.point_icon_scale,
   );
@@ -406,6 +416,8 @@ export function normalizeAgentAbilityBlueprint(raw: unknown): AgentAbilityBluepr
   }
   if (stratPlacementMode) base.stratPlacementMode = stratPlacementMode;
   if (pointIconShow === false) base.pointIconShow = false;
+  if (pointMarkStyle) base.pointMarkStyle = pointMarkStyle;
+  if (pointMarkSymbolId) base.pointMarkSymbolId = pointMarkSymbolId;
   if (pointIconScale !== undefined) base.pointIconScale = pointIconScale;
   if (textureId) base.textureId = textureId;
   if (textureRadialFromOrigin === true) {

@@ -9,7 +9,16 @@ import type {
   AgentAbilityGeometry,
   AgentAbilityShapeKind,
   AgentAbilitySlot,
+  PointMarkStyle,
+  PointMarkSymbolId,
 } from "@/types/agent-ability";
+import { POINT_MARK_SYMBOL_IDS } from "@/types/agent-ability";
+import {
+  effectivePointMarkStyle,
+  effectivePointMarkSymbolId,
+  POINT_MARK_SYMBOL_LABELS,
+} from "@/lib/point-blueprint-mark";
+import { PointMarkSymbolGraphic } from "@/components/PointBlueprintMarkDraw";
 import {
   saveAgentAbilitiesBlueprintAction,
   saveAgentPortraitUrlAction,
@@ -265,7 +274,7 @@ function arcPathD(g: Extract<AgentAbilityGeometry, { kind: "arc" }>): string {
   return `M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} ${sweepFlag} ${x2} ${y2}`;
 }
 
-/** Point blueprint in editor: Valorant API icon when available. */
+/** Point blueprint in editor: icon, dot, or preset symbol. */
 function PointBlueprintEditorPreview({
   x,
   y,
@@ -274,6 +283,8 @@ function PointBlueprintEditorPreview({
   iconScale = 1,
   dimmed,
   vbExtent = VB,
+  markStyle,
+  symbolId,
 }: {
   x: number;
   y: number;
@@ -283,6 +294,8 @@ function PointBlueprintEditorPreview({
   dimmed?: boolean;
   /** Matches SVG viewBox width/height when the editor canvas is expanded. */
   vbExtent?: number;
+  markStyle: PointMarkStyle;
+  symbolId?: PointMarkSymbolId;
 }) {
   const [imgFailed, setImgFailed] = useState(false);
   const sw = vbExtent * 0.004;
@@ -290,10 +303,42 @@ function PointBlueprintEditorPreview({
   const scale = Math.min(3, Math.max(0.12, iconScale));
   const size = vbExtent * 0.038 * scale;
   const half = size / 2;
+  const symScale = (vbExtent * 0.019 * scale) / 12;
   const showImg =
+    markStyle === "ability_icon" &&
     typeof displayIconUrl === "string" &&
     displayIconUrl.startsWith("http") &&
     !imgFailed;
+
+  if (markStyle === "dot") {
+    return (
+      <g opacity={op}>
+        <circle
+          cx={x}
+          cy={y}
+          r={vbExtent * 0.018 * scale}
+          fill={stroke}
+          stroke="#fff"
+          strokeWidth={sw}
+        />
+      </g>
+    );
+  }
+
+  if (markStyle === "symbol") {
+    const sid = symbolId ?? "crosshair";
+    return (
+      <g opacity={op}>
+        <g transform={`translate(${x},${y}) scale(${symScale})`}>
+          <PointMarkSymbolGraphic
+            symbolId={sid}
+            stroke={stroke}
+            swMap={sw}
+          />
+        </g>
+      </g>
+    );
+  }
 
   return (
     <g opacity={op}>
@@ -364,20 +409,26 @@ function AbilityShapePreview({
   const op = dimmed ? 0.35 : 0.95;
 
   switch (g.kind) {
-    case "point":
+    case "point": {
+      const markStyle = effectivePointMarkStyle(b);
+      const symbolId =
+        markStyle === "symbol" ? effectivePointMarkSymbolId(b) : undefined;
       return (
         <PointBlueprintEditorPreview
           x={g.x}
           y={g.y}
           stroke={stroke}
           displayIconUrl={
-            b.pointIconShow === false ? null : displayIconUrl
+            markStyle === "ability_icon" ? displayIconUrl : null
           }
           iconScale={b.pointIconScale ?? 1}
           dimmed={dimmed}
           vbExtent={vbExtent}
+          markStyle={markStyle}
+          symbolId={symbolId}
         />
       );
+    }
     case "circle":
       return (
         <g opacity={op}>
@@ -1065,6 +1116,8 @@ export function AgentAbilityEditor({
           | "stratPlacementMode"
           | "stratAttachToAgent"
           | "pointIconShow"
+          | "pointMarkStyle"
+          | "pointMarkSymbolId"
           | "pointIconScale"
           | "textureId"
           | "textureRadialFromOrigin"
@@ -1099,6 +1152,29 @@ export function AgentAbilityEditor({
           if ("pointIconShow" in patch) {
             if (patch.pointIconShow === false) n.pointIconShow = false;
             else delete n.pointIconShow;
+          }
+          if ("pointMarkStyle" in patch) {
+            const v = patch.pointMarkStyle;
+            if (v === undefined || v === "ability_icon") {
+              delete n.pointMarkStyle;
+              delete n.pointMarkSymbolId;
+              delete n.pointIconShow;
+            } else if (v === "dot") {
+              n.pointMarkStyle = "dot";
+              delete n.pointMarkSymbolId;
+              delete n.pointIconShow;
+            } else if (v === "symbol") {
+              n.pointMarkStyle = "symbol";
+              delete n.pointIconShow;
+              if (!n.pointMarkSymbolId) n.pointMarkSymbolId = "crosshair";
+            }
+          }
+          if ("pointMarkSymbolId" in patch) {
+            if (patch.pointMarkSymbolId === undefined) {
+              delete n.pointMarkSymbolId;
+            } else {
+              n.pointMarkSymbolId = patch.pointMarkSymbolId;
+            }
           }
           if ("pointIconScale" in patch) {
             if (patch.pointIconScale === undefined) {
@@ -2002,27 +2078,93 @@ export function AgentAbilityEditor({
                 {selected.shapeKind === "point" ? (
                   <div className="space-y-2 rounded-md border border-cyan-900/35 bg-slate-950/45 p-2.5">
                     <h4 className="text-[11px] font-semibold text-cyan-100/90">
-                      Ability icon (strat map)
+                      Strat map marker
                     </h4>
                     <p className="text-[10px] leading-snug text-violet-400/80">
-                      Valorant API icon for this slot when available. Off uses the colored dot
-                      only. Size is relative to the default point icon.
+                      Ability icon uses the Valorant API art when available. Dot matches
+                      custom-slot pins. Symbols are vector presets that scale with the map.
                     </p>
-                    <label className="flex cursor-pointer items-center gap-2 text-[11px] text-violet-200/90">
-                      <input
-                        type="checkbox"
-                        checked={selected.pointIconShow !== false}
-                        onChange={(e) =>
-                          updateSelectedBlueprintMeta({
-                            pointIconShow: e.target.checked ? true : false,
-                          })
-                        }
-                        className="rounded border-violet-600/60"
-                      />
-                      Show ability icon
-                    </label>
+                    <div
+                      className="flex flex-wrap gap-1"
+                      role="group"
+                      aria-label="Point marker style"
+                    >
+                      {(
+                        [
+                          { id: "ability_icon" as const, label: "Ability icon" },
+                          { id: "dot" as const, label: "Dot" },
+                          { id: "symbol" as const, label: "Symbol" },
+                        ] as const
+                      ).map(({ id, label }) => {
+                        const active =
+                          effectivePointMarkStyle(selected) === id;
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            onClick={() =>
+                              updateSelectedBlueprintMeta({
+                                pointMarkStyle: id,
+                              })
+                            }
+                            className={`min-w-0 flex-1 rounded-md border px-2 py-1.5 text-center text-[10px] font-medium transition ${
+                              active
+                                ? "border-cyan-400/70 bg-cyan-950/50 text-white"
+                                : "border-violet-800/45 bg-slate-950/60 text-violet-200/85 hover:border-violet-600/45"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {effectivePointMarkStyle(selected) === "symbol" ? (
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] text-violet-400/75">
+                          Preset (tap to select)
+                        </p>
+                        <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-4">
+                          {POINT_MARK_SYMBOL_IDS.map((sid) => {
+                            const cur = effectivePointMarkSymbolId(selected);
+                            const on = cur === sid;
+                            return (
+                              <button
+                                key={sid}
+                                type="button"
+                                title={POINT_MARK_SYMBOL_LABELS[sid]}
+                                onClick={() =>
+                                  updateSelectedBlueprintMeta({
+                                    pointMarkStyle: "symbol",
+                                    pointMarkSymbolId: sid,
+                                  })
+                                }
+                                className={`flex aspect-square items-center justify-center rounded-md border p-1 transition ${
+                                  on
+                                    ? "border-cyan-400/80 bg-cyan-950/40 ring-1 ring-cyan-500/35"
+                                    : "border-violet-800/45 bg-slate-950/70 hover:border-violet-600/40"
+                                }`}
+                              >
+                                <svg
+                                  viewBox="-24 -24 48 48"
+                                  className="h-8 w-8 text-violet-100"
+                                  aria-hidden
+                                >
+                                  <g className="text-current">
+                                    <PointMarkSymbolGraphic
+                                      symbolId={sid}
+                                      stroke="currentColor"
+                                      swMap={2.4}
+                                    />
+                                  </g>
+                                </svg>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
                     <label className="block text-[10px] text-violet-400/90">
-                      Icon size (
+                      Marker size (
                       {(selected.pointIconScale ?? 1).toFixed(2)}×)
                       <input
                         type="range"
@@ -2045,7 +2187,7 @@ export function AgentAbilityEditor({
                         updateSelectedBlueprintMeta({ pointIconScale: undefined })
                       }
                     >
-                      Reset icon size
+                      Reset marker size
                     </button>
                   </div>
                 ) : null}

@@ -678,7 +678,7 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
             onClick={() => setLayersModalOpen(false)}
             aria-label="Close map filter modal"
           />
-          <div className="relative z-10 w-full max-w-3xl rounded-xl border border-violet-600/35 bg-slate-950 px-4 py-4 shadow-2xl shadow-violet-950/45">
+          <div className="relative z-10 w-full max-w-[min(100%,48rem)] min-w-0 rounded-xl border border-violet-600/35 bg-slate-950 px-4 py-4 shadow-2xl shadow-violet-950/45">
             <div className="mb-3 flex items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-violet-100">Map filters</h3>
               <button
@@ -729,8 +729,8 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
           ref={setSvgRef}
           tabIndex={-1}
           viewBox={vbStr}
-          className={`w-full select-none touch-none outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 ${
-            embed ? "block h-full min-h-[min(56dvh,720px)]" : "h-auto"
+          className={`w-full max-w-full select-none touch-none outline-none focus-visible:ring-2 focus-visible:ring-violet-500/50 ${
+            embed ? "block h-full min-h-0 max-h-full" : "h-auto"
           } ${rightPanning ? "cursor-grabbing" : "cursor-crosshair"}`}
           style={
             embed

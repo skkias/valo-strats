@@ -35,12 +35,12 @@ export function DifficultyPicker({
 
   return (
     <div
-      className="mt-1"
+      className="w-full min-w-0"
       role="radiogroup"
       aria-labelledby={labelledBy}
       aria-label={labelledBy ? undefined : "Strat difficulty"}
     >
-      <div className="flex gap-1.5 rounded-xl border border-violet-800/45 bg-slate-950/70 p-1 shadow-inner shadow-violet-950/30">
+      <div className="flex min-w-0 max-w-full gap-2 rounded-xl border border-violet-800/45 bg-slate-950/70 p-2 shadow-inner shadow-violet-950/30 sm:p-2.5">
         {LEVELS.map((n) => {
           const selected = current === n;
           const { title, hint } = COPY[n];

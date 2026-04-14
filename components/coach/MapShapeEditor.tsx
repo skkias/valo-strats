@@ -1055,6 +1055,8 @@ export function MapShapeEditor({
       const canvas = vbRef.current;
       const pt = clientToSvgLogical(el, e.clientX, e.clientY);
       const zoomIn = e.deltaY < 0;
+      /** Shift = fine steps; default is gentler than legacy 12% per notch. */
+      const step = e.shiftKey ? 1.018 : 1.055;
       setViewport((prev) => {
         const cur: ViewRect = prev ?? {
           minX: canvas.minX,
@@ -1062,7 +1064,7 @@ export function MapShapeEditor({
           width: canvas.width,
           height: canvas.height,
         };
-        const scale = zoomIn ? 1 / 1.12 : 1.12;
+        const scale = zoomIn ? 1 / step : step;
         let newW = cur.width * scale;
         let newH = cur.height * scale;
         newW = Math.min(
@@ -1618,8 +1620,9 @@ export function MapShapeEditor({
       e.preventDefault();
       const dxPx = e.clientX - pan.startClientX;
       const dyPx = e.clientY - pan.startClientY;
-      const dxUser = dxPx * pan.userPerPxX;
-      const dyUser = dyPx * pan.userPerPxY;
+      const panMul = e.shiftKey ? 0.22 : 1;
+      const dxUser = dxPx * pan.userPerPxX * panMul;
+      const dyUser = dyPx * pan.userPerPxY * panMul;
       const canvas = vbRef.current;
       let nx = pan.startView.minX - dxUser;
       let ny = pan.startView.minY - dyUser;
@@ -4424,14 +4427,21 @@ export function MapShapeEditor({
           <>
           <div className="border-t border-violet-800/40 pt-4">
             <span className="label">Image transform</span>
+            <p className="mt-1 text-[10px] leading-snug text-violet-500/75">
+              Hold <kbd className="rounded border border-violet-700/50 bg-slate-900/80 px-1 py-px font-mono text-[9px] text-violet-300/90">
+                Shift
+              </kbd>{" "}
+              while scrolling the map for finer zoom, or while right-drag panning
+              for finer pan.
+            </p>
             <label className="mt-2 block text-xs text-violet-300/55">
-              Scale ({transform.scale.toFixed(2)}x)
+              Scale ({transform.scale.toFixed(3)}×)
             </label>
             <input
               type="range"
               min={0.25}
               max={3}
-              step={0.05}
+              step={0.005}
               value={transform.scale}
               onChange={(e) =>
                 setTransform((t) => ({
@@ -4442,13 +4452,13 @@ export function MapShapeEditor({
               className="mt-1 w-full accent-violet-500"
             />
             <label className="mt-3 block text-xs text-violet-300/55">
-              Pan X
+              Pan X ({transform.tx.toFixed(1)})
             </label>
             <input
               type="range"
-              min={-500}
-              max={500}
-              step={1}
+              min={-2000}
+              max={2000}
+              step={0.25}
               value={transform.tx}
               onChange={(e) =>
                 setTransform((t) => ({ ...t, tx: Number(e.target.value) }))
@@ -4456,13 +4466,13 @@ export function MapShapeEditor({
               className="mt-1 w-full accent-violet-500"
             />
             <label className="mt-3 block text-xs text-violet-300/55">
-              Pan Y
+              Pan Y ({transform.ty.toFixed(1)})
             </label>
             <input
               type="range"
-              min={-500}
-              max={500}
-              step={1}
+              min={-2000}
+              max={2000}
+              step={0.25}
               value={transform.ty}
               onChange={(e) =>
                 setTransform((t) => ({ ...t, ty: Number(e.target.value) }))

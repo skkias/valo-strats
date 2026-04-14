@@ -20,8 +20,8 @@ export function StratSideToggle({
   const isAttack = value === "atk";
 
   return (
-    <div className="mt-1" role="group" aria-labelledby={labelledBy}>
-      <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+    <div className="w-full min-w-0" role="group" aria-labelledby={labelledBy}>
+      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2.5 sm:justify-start sm:gap-x-6 sm:gap-y-0">
         <span
           className={`inline-flex min-w-22 items-center gap-1.5 text-sm font-semibold transition ${
             isAttack ? "text-violet-100" : "text-violet-500/45"

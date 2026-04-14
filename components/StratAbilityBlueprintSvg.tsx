@@ -1,7 +1,12 @@
 "use client";
 
 import { useState, type CSSProperties, type ReactNode } from "react";
-import type { AgentAbilityBlueprint, AgentAbilityGeometry } from "@/types/agent-ability";
+import type {
+  AgentAbilityBlueprint,
+  AgentAbilityGeometry,
+  PointMarkStyle,
+  PointMarkSymbolId,
+} from "@/types/agent-ability";
 import { blueprintStratAnchor } from "@/lib/strat-blueprint-anchor";
 import { rgbaWithAlpha } from "@/lib/ability-textures";
 import { AbilityTextureDefs } from "@/components/ability/AbilityTextureDefs";
@@ -15,11 +20,150 @@ import {
   type VisionLosContext,
 } from "@/lib/vision-cone-los";
 import { computeRicochetPath } from "@/lib/ricochet-path";
+import {
+  effectivePointMarkStyle,
+  effectivePointMarkSymbolId,
+} from "@/lib/point-blueprint-mark";
+import { PointMarkSymbolGraphic } from "@/components/PointBlueprintMarkDraw";
 
 const BP = BLUEPRINT_CANVAS_SIZE;
 
 /** Thinner strokes on the strat map (uniform scale for all blueprint linework). */
 const MAP_BLUEPRINT_STROKE_SCALE = 0.5;
+
+/** Minimum stroke width (SVG user units, with non-scaling-stroke) for hit-testing thin lines. */
+function blueprintMinLineHitWidth(vbWidth: number, visibleW: number): number {
+  return Math.max(visibleW, Math.max(vbWidth * 0.036, 16));
+}
+
+/**
+ * Renders an invisible wide stroke for picking, then the visible stroke on top.
+ * Hit path uses no dasharray so dashed lines stay easy to grab along the full geometry.
+ */
+function BlueprintLineHitStroke({
+  vbWidth,
+  pointerEvents: peMode,
+  visibleStrokeWidth,
+  stroke,
+  strokeLinecap = "round",
+  strokeLinejoin,
+  strokeDasharray,
+  vectorEffect = "non-scaling-stroke",
+  pathD,
+  line,
+}: {
+  vbWidth: number;
+  pointerEvents: "none" | "auto";
+  visibleStrokeWidth: number;
+  stroke: string;
+  strokeLinecap?: "round" | "butt" | "square";
+  strokeLinejoin?: "round" | "bevel" | "miter";
+  strokeDasharray?: string;
+  vectorEffect?: "non-scaling-stroke" | "none";
+  pathD?: string;
+  line?: { x1: number; y1: number; x2: number; y2: number };
+}): ReactNode {
+  const hitW = blueprintMinLineHitWidth(vbWidth, visibleStrokeWidth);
+  const ve = vectorEffect;
+  const join = strokeLinejoin;
+
+  if (peMode === "none") {
+    if (pathD) {
+      return (
+        <path
+          d={pathD}
+          fill="none"
+          stroke={stroke}
+          strokeLinecap={strokeLinecap}
+          strokeLinejoin={join}
+          strokeDasharray={strokeDasharray}
+          vectorEffect={ve}
+          strokeWidth={visibleStrokeWidth}
+          style={{ pointerEvents: "none" }}
+        />
+      );
+    }
+    if (line) {
+      return (
+        <line
+          x1={line.x1}
+          y1={line.y1}
+          x2={line.x2}
+          y2={line.y2}
+          stroke={stroke}
+          strokeLinecap={strokeLinecap}
+          strokeDasharray={strokeDasharray}
+          vectorEffect={ve}
+          strokeWidth={visibleStrokeWidth}
+          style={{ pointerEvents: "none" }}
+        />
+      );
+    }
+    return null;
+  }
+
+  if (pathD) {
+    return (
+      <g className="strat-ability-line-group">
+        <path
+          d={pathD}
+          fill="none"
+          stroke="transparent"
+          strokeLinecap={strokeLinecap}
+          strokeLinejoin={join}
+          vectorEffect={ve}
+          strokeWidth={hitW}
+          style={{ pointerEvents: "stroke", cursor: "pointer" }}
+        />
+        <path
+          className="strat-ability-line-visible"
+          d={pathD}
+          fill="none"
+          stroke={stroke}
+          strokeLinecap={strokeLinecap}
+          strokeLinejoin={join}
+          strokeDasharray={strokeDasharray}
+          vectorEffect={ve}
+          strokeWidth={visibleStrokeWidth}
+          style={{ pointerEvents: "none" }}
+        />
+      </g>
+    );
+  }
+
+  if (line) {
+    return (
+      <g className="strat-ability-line-group">
+        <line
+          x1={line.x1}
+          y1={line.y1}
+          x2={line.x2}
+          y2={line.y2}
+          stroke="transparent"
+          strokeLinecap={strokeLinecap}
+          vectorEffect={ve}
+          strokeWidth={hitW}
+          style={{ pointerEvents: "stroke", cursor: "pointer" }}
+        />
+        <line
+          className="strat-ability-line-visible"
+          x1={line.x1}
+          y1={line.y1}
+          x2={line.x2}
+          y2={line.y2}
+          stroke={stroke}
+          strokeLinecap={strokeLinecap}
+          strokeDasharray={strokeDasharray}
+          vectorEffect={ve}
+          strokeWidth={visibleStrokeWidth}
+          style={{ pointerEvents: "none" }}
+        />
+      </g>
+    );
+  }
+
+  return null;
+}
 
 function arcPathD(g: Extract<AgentAbilityGeometry, { kind: "arc" }>): string {
   const rad = (d: number) => (d * Math.PI) / 180;
@@ -33,7 +177,7 @@ function arcPathD(g: Extract<AgentAbilityGeometry, { kind: "arc" }>): string {
   return `M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} ${sweepFlag} ${x2} ${y2}`;
 }
 
-/** Point-only: Valorant API ability icon (`displayIcon`), scaled into blueprint space. */
+/** Point-only: ability icon, dot, or preset vector mark in blueprint space. */
 function PointBlueprintMark({
   x,
   y,
@@ -44,6 +188,8 @@ function PointBlueprintMark({
   swMap,
   op,
   pointerEvents,
+  markStyle,
+  symbolId,
 }: {
   x: number;
   y: number;
@@ -55,15 +201,64 @@ function PointBlueprintMark({
   swMap: number;
   op: number;
   pointerEvents: "none" | "auto";
+  markStyle: PointMarkStyle;
+  symbolId?: PointMarkSymbolId;
 }) {
   const [imgFailed, setImgFailed] = useState(false);
   const scale = Math.min(3, Math.max(0.12, iconScale));
   const size = BP * 0.038 * scale;
   const half = size / 2;
+  const symScale = (BP * 0.019 * scale) / 12;
   const showImg =
+    markStyle === "ability_icon" &&
     typeof displayIconUrl === "string" &&
     displayIconUrl.startsWith("http") &&
     !imgFailed;
+
+  if (markStyle === "dot") {
+    return (
+      <g opacity={op} style={{ pointerEvents }}>
+        <circle
+          cx={x}
+          cy={y}
+          r={BP * 0.018 * scale}
+          fill={accentStroke}
+          stroke={selected ? "#fae8ff" : "#fff"}
+          vectorEffect="non-scaling-stroke"
+          strokeWidth={swMap * (selected ? 1.4 : 1.1)}
+          style={{ pointerEvents } as CSSProperties}
+        />
+      </g>
+    );
+  }
+
+  if (markStyle === "symbol") {
+    const sid = symbolId ?? "crosshair";
+    return (
+      <g opacity={op} style={{ pointerEvents }}>
+        <g transform={`translate(${x},${y}) scale(${symScale})`}>
+          <PointMarkSymbolGraphic
+            symbolId={sid}
+            stroke={accentStroke}
+            selected={selected}
+            swMap={swMap}
+          />
+        </g>
+        {selected ? (
+          <circle
+            cx={x}
+            cy={y}
+            r={BP * 0.024 * scale}
+            fill="none"
+            stroke="#fae8ff"
+            vectorEffect="non-scaling-stroke"
+            strokeWidth={swMap * 0.9}
+            style={{ pointerEvents: "none" }}
+          />
+        ) : null}
+      </g>
+    );
+  }
 
   return (
     <g opacity={op} style={{ pointerEvents }}>
@@ -194,8 +389,13 @@ export function StratAbilityBlueprintSvg({
         Number.isFinite(blueprint.pointIconScale)
           ? blueprint.pointIconScale
           : 1;
+      const markStyle = effectivePointMarkStyle(blueprint);
+      const symbolId =
+        markStyle === "symbol"
+          ? effectivePointMarkSymbolId(blueprint)
+          : undefined;
       const effectiveIconUrl =
-        blueprint.pointIconShow === false ? null : abilityDisplayIconUrl;
+        markStyle === "ability_icon" ? abilityDisplayIconUrl : null;
       inner = (
         <PointBlueprintMark
           x={g.x}
@@ -207,6 +407,8 @@ export function StratAbilityBlueprintSvg({
           swMap={swMap}
           op={op}
           pointerEvents={pointerEvents}
+          markStyle={markStyle}
+          symbolId={symbolId}
         />
       );
       break;
@@ -245,15 +447,14 @@ export function StratAbilityBlueprintSvg({
           : `M ${g.x1} ${g.y1} L ${g.x2} ${g.y2}`;
         inner = (
           <g opacity={wallOpacity} style={{ pointerEvents }}>
-            <path
-              d={d}
-              fill="none"
+            <BlueprintLineHitStroke
+              vbWidth={vbWidth}
+              pointerEvents={pointerEvents}
+              pathD={d}
+              visibleStrokeWidth={swMap * 1.5 * strokeMul}
               stroke={stroke}
-              strokeLinecap="round"
               strokeLinejoin="round"
               strokeDasharray={wallDash}
-              {...commonStroke}
-              strokeWidth={swMap * 1.5 * strokeMul}
             />
           </g>
         );
@@ -329,14 +530,13 @@ export function StratAbilityBlueprintSvg({
         .join(" ");
       inner = (
         <g opacity={op} style={{ pointerEvents }}>
-          <path
-            d={d}
-            fill="none"
+          <BlueprintLineHitStroke
+            vbWidth={vbWidth}
+            pointerEvents={pointerEvents}
+            pathD={d}
+            visibleStrokeWidth={swMap * 1.35}
             stroke={stroke}
-            strokeLinecap="round"
             strokeLinejoin="round"
-            {...commonStroke}
-            strokeWidth={swMap * 1.35}
           />
         </g>
       );
@@ -378,13 +578,12 @@ export function StratAbilityBlueprintSvg({
     case "arc":
       inner = (
         <g opacity={op} style={{ pointerEvents }}>
-          <path
-            d={arcPathD(g)}
-            fill="none"
+          <BlueprintLineHitStroke
+            vbWidth={vbWidth}
+            pointerEvents={pointerEvents}
+            pathD={arcPathD(g)}
+            visibleStrokeWidth={swMap * 1.45}
             stroke={stroke}
-            strokeLinecap="round"
-            {...commonStroke}
-            strokeWidth={swMap * 1.45}
           />
         </g>
       );
@@ -393,16 +592,13 @@ export function StratAbilityBlueprintSvg({
       const m = g;
       inner = (
         <g opacity={op} style={{ pointerEvents }}>
-          <line
-            x1={m.ax}
-            y1={m.ay}
-            x2={m.bx}
-            y2={m.by}
+          <BlueprintLineHitStroke
+            vbWidth={vbWidth}
+            pointerEvents={pointerEvents}
+            line={{ x1: m.ax, y1: m.ay, x2: m.bx, y2: m.by }}
+            visibleStrokeWidth={swMap * 1.65}
             stroke={stroke}
-            strokeLinecap="round"
             strokeDasharray={`${vbWidth * 0.014 * MAP_BLUEPRINT_STROKE_SCALE} ${vbWidth * 0.01 * MAP_BLUEPRINT_STROKE_SCALE}`}
-            {...commonStroke}
-            strokeWidth={swMap * 1.65}
           />
           <circle
             cx={m.ax}
@@ -456,14 +652,13 @@ export function StratAbilityBlueprintSvg({
           .join(" ");
         inner = (
           <g opacity={op} style={{ pointerEvents }}>
-            <path
-              d={d}
-              fill="none"
+            <BlueprintLineHitStroke
+              vbWidth={vbWidth}
+              pointerEvents={pointerEvents}
+              pathD={d}
+              visibleStrokeWidth={swMap * 1.65}
               stroke={stroke}
-              strokeLinecap="round"
               strokeLinejoin="round"
-              vectorEffect="non-scaling-stroke"
-              strokeWidth={swMap * 1.65}
               strokeDasharray={`${vbWidth * 0.014 * MAP_BLUEPRINT_STROKE_SCALE} ${vbWidth * 0.01 * MAP_BLUEPRINT_STROKE_SCALE}`}
             />
             <circle
@@ -490,16 +685,13 @@ export function StratAbilityBlueprintSvg({
       }
       inner = (
         <g opacity={op} style={{ pointerEvents }}>
-          <line
-            x1={r.ax}
-            y1={r.ay}
-            x2={r.bx}
-            y2={r.by}
+          <BlueprintLineHitStroke
+            vbWidth={vbWidth}
+            pointerEvents={pointerEvents}
+            line={{ x1: r.ax, y1: r.ay, x2: r.bx, y2: r.by }}
+            visibleStrokeWidth={swMap * 1.65}
             stroke={stroke}
-            strokeLinecap="round"
             strokeDasharray={`${vbWidth * 0.014 * MAP_BLUEPRINT_STROKE_SCALE} ${vbWidth * 0.01 * MAP_BLUEPRINT_STROKE_SCALE}`}
-            {...commonStroke}
-            strokeWidth={swMap * 1.65}
           />
           <circle
             cx={r.ax}

@@ -37,3 +37,45 @@ export function stratRicochetRotationHandleDisplay(
     y: origin.y + py * lateral,
   };
 }
+
+/**
+ * Toggleable ray ON/OFF was drawn at the segment midpoint, which sits on the same line as
+ * the origin mover and rotation diamond — they stack and fight for hits. Nudge the label
+ * perpendicular to the blueprint chord, choosing the side with more clearance from handles.
+ */
+export function stratToggleableRayToggleOffsetFromLine(
+  mid: MapPoint,
+  segmentStartDisplay: MapPoint,
+  segmentEndDisplay: MapPoint,
+  avoid: readonly MapPoint[],
+  vbWidth: number,
+  pinScale: number,
+): MapPoint {
+  let dx = segmentEndDisplay.x - segmentStartDisplay.x;
+  let dy = segmentEndDisplay.y - segmentStartDisplay.y;
+  let len = Math.hypot(dx, dy);
+  if (len < 1e-4 && avoid.length >= 2) {
+    dx = avoid[1].x - avoid[0].x;
+    dy = avoid[1].y - avoid[0].y;
+    len = Math.hypot(dx, dy);
+  }
+  if (len < 1e-4) return mid;
+
+  const nx0 = -dy / len;
+  const ny0 = dx / len;
+  /** Enough to clear ON/OFF circle (~1.1% vb) plus handle stacks. */
+  const step = Math.max(vbWidth * 0.03, 15) * pinScale;
+
+  function minDistToAvoid(p: MapPoint): number {
+    let m = Infinity;
+    for (const q of avoid) {
+      const d = Math.hypot(p.x - q.x, p.y - q.y);
+      if (d < m) m = d;
+    }
+    return m;
+  }
+
+  const plus = { x: mid.x + nx0 * step, y: mid.y + ny0 * step };
+  const minus = { x: mid.x - nx0 * step, y: mid.y - ny0 * step };
+  return minDistToAvoid(plus) >= minDistToAvoid(minus) ? plus : minus;
+}
