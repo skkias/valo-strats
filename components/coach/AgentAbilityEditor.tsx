@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -869,6 +870,11 @@ export function AgentAbilityEditor({
   /** 0 = snap off; otherwise grid units in blueprint space. */
   const [snapStep, setSnapStep] = useState<number>(25);
   const [cursorBp, setCursorBp] = useState<MapPoint | null>(null);
+  /** Two-column blueprint layout (`xl`). Sidebar max-height tracks this column. */
+  const blueprintGridColumnRef = useRef<HTMLDivElement>(null);
+  const [blueprintGridColumnHeightPx, setBlueprintGridColumnHeightPx] =
+    useState<number | null>(null);
+  const [blueprintGridTwoColumn, setBlueprintGridTwoColumn] = useState(false);
 
   const blueprintSvgExtent = useMemo(() => {
     let maxC = BLUEPRINT_CANVAS_SIZE;
@@ -904,6 +910,26 @@ export function AgentAbilityEditor({
       Math.max(BLUEPRINT_CANVAS_SIZE, Math.ceil(maxC / 50) * 50 + 100),
     );
   }, [abilities, placement, cursorBp]);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1280px)");
+    const apply = () => setBlueprintGridTwoColumn(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+
+  useLayoutEffect(() => {
+    const el = blueprintGridColumnRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const sync = () => {
+      setBlueprintGridColumnHeightPx(el.getBoundingClientRect().height);
+    };
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const snapBlueprintClick = useCallback(
     (p: MapPoint): MapPoint => {
@@ -1457,8 +1483,11 @@ export function AgentAbilityEditor({
         ) : null}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-stretch">
-        <div className="flex min-h-0 min-w-0 flex-col space-y-3 xl:h-full">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
+        <div
+          ref={blueprintGridColumnRef}
+          className="flex min-h-0 min-w-0 flex-col space-y-3"
+        >
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-violet-800/30 bg-slate-950/55 px-3 py-2 text-xs text-violet-200/90">
             <span className="text-violet-400/90">
               Snap to grid (easier to match in-game proportions by eye)
@@ -1482,7 +1511,7 @@ export function AgentAbilityEditor({
             <strong className="text-violet-200/85">drag the colored dots</strong> to resize and
             move. While placing a new shape, move the pointer to preview before you click.
           </p>
-          <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-violet-500/25 bg-slate-950/80">
+          <div className="min-h-0 overflow-hidden rounded-xl border border-violet-500/25 bg-slate-950/80">
             <div className="mx-auto w-full max-w-[min(100%,78dvh)] p-1.5">
               <svg
                 ref={svgRef}
@@ -1763,7 +1792,14 @@ export function AgentAbilityEditor({
           )}
         </div>
 
-        <div className="flex min-h-0 min-w-0 flex-col space-y-4 rounded-xl border border-violet-500/20 bg-slate-950/50 p-4 xl:h-full xl:overflow-y-auto xl:overscroll-contain [scrollbar-gutter:stable]">
+        <div
+          className="flex min-h-0 min-w-0 flex-col space-y-4 overflow-y-auto overscroll-contain rounded-xl border border-violet-500/20 bg-slate-950/50 p-4 [scrollbar-gutter:stable]"
+          style={
+            blueprintGridTwoColumn && blueprintGridColumnHeightPx != null
+              ? { maxHeight: blueprintGridColumnHeightPx }
+              : undefined
+          }
+        >
           <h3 className="text-sm font-semibold text-white">Define new ability</h3>
           <div className="space-y-2">
             <label className="label" htmlFor="ab-slot">
