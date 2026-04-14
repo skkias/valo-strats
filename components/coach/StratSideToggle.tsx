@@ -5,6 +5,8 @@ import { Swords, Shield } from "lucide-react";
 
 /**
  * Attack / Defense as a physical-style toggle (replaces a two-option select).
+ * Labels stack on the left; the switch stays on the right so narrow widths wrap text
+ * instead of squeezing the control between side names.
  */
 export function StratSideToggle({
   value,
@@ -21,15 +23,35 @@ export function StratSideToggle({
 
   return (
     <div className="w-full min-w-0" role="group" aria-labelledby={labelledBy}>
-      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2.5 sm:justify-start sm:gap-x-6 sm:gap-y-0">
-        <span
-          className={`inline-flex min-w-22 items-center gap-1.5 text-sm font-semibold transition ${
-            isAttack ? "text-violet-100" : "text-violet-500/45"
-          }`}
-        >
-          <Swords className="h-4 w-4 shrink-0" aria-hidden />
-          Attack
-        </span>
+      <div className="flex min-w-0 flex-row items-center gap-3 sm:gap-4">
+        <div className="flex min-h-10 min-w-0 flex-1 flex-col justify-center gap-1">
+          <span
+            className={`flex min-w-0 items-start gap-1.5 text-sm font-semibold transition ${
+              isAttack ? "text-violet-100" : "text-violet-500/45"
+            }`}
+          >
+            <Swords
+              className="mt-0.5 h-4 w-4 shrink-0"
+              aria-hidden
+            />
+            <span className="min-w-0 flex-1 wrap-break-word leading-snug">
+              Attack
+            </span>
+          </span>
+          <span
+            className={`flex min-w-0 items-start gap-1.5 text-sm font-semibold transition ${
+              !isAttack ? "text-sky-200" : "text-violet-500/45"
+            }`}
+          >
+            <Shield
+              className="mt-0.5 h-4 w-4 shrink-0"
+              aria-hidden
+            />
+            <span className="min-w-0 flex-1 wrap-break-word leading-snug">
+              Defense
+            </span>
+          </span>
+        </div>
 
         <button
           type="button"
@@ -63,15 +85,6 @@ export function StratSideToggle({
             )}
           </span>
         </button>
-
-        <span
-          className={`inline-flex min-w-22 items-center gap-1.5 text-sm font-semibold transition ${
-            !isAttack ? "text-sky-200" : "text-violet-500/45"
-          }`}
-        >
-          <Shield className="h-4 w-4 shrink-0" aria-hidden />
-          Defense
-        </span>
       </div>
     </div>
   );

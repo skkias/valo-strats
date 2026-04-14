@@ -173,8 +173,8 @@ export function CoachDashboard({
   }, []);
 
   const splitContainerRef = useRef<HTMLDivElement>(null);
-  /** Left column (Details / Map tabs): default ~¼ width on large screens; drag handle adjusts. */
-  const [splitPct, setSplitPct] = useState(25);
+  /** Left column (Details / Map tabs): default ~30% width on large screens; drag handle adjusts. */
+  const [splitPct, setSplitPct] = useState(30);
   const [coachFormTab, setCoachFormTab] = useState<"details" | "stages">(
     "details",
   );
@@ -549,7 +549,7 @@ export function CoachDashboard({
               </p>
             </div>
             <div className="grid min-w-0 grid-cols-1 gap-y-5 sm:col-span-2 sm:grid-cols-2 sm:gap-y-0">
-              <div className="min-w-0 sm:pr-2">
+              <div className="min-w-0 px-3 sm:px-0 sm:pl-3 sm:pr-2">
                 <div className="label" id="strat-side-label">
                   Side
                 </div>
@@ -563,7 +563,7 @@ export function CoachDashboard({
                   </div>
                 </div>
               </div>
-              <div className="min-w-0 sm:pl-2">
+              <div className="min-w-0 px-3 sm:px-0 sm:pl-2 sm:pr-3">
                 <div className="label" id="strat-difficulty-label">
                   Difficulty
                 </div>

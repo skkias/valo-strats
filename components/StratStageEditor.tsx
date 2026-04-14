@@ -257,6 +257,7 @@ export function StratStageEditor({
   const [agentStageTrans, setAgentStageTrans] =
     useState<StratAgentTokenTransition | null>(null);
   const [mapLayersModalOpen, setMapLayersModalOpen] = useState(false);
+  const [mapControlsModalOpen, setMapControlsModalOpen] = useState(false);
   const [mapResetZoomSignal, setMapResetZoomSignal] = useState(0);
   /** Left column: stage fields vs token placement controls. */
   const [tokenTrayOpenSlug, setTokenTrayOpenSlug] = useState<string | null>(
@@ -375,6 +376,15 @@ export function StratStageEditor({
   useEffect(() => {
     setMapPinScale(readCoachMapPinScale());
   }, []);
+
+  useEffect(() => {
+    if (!mapControlsModalOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMapControlsModalOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mapControlsModalOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2260,13 +2270,20 @@ export function StratStageEditor({
                 })}
               </div>
             )}
-            <div className="flex shrink-0 items-stretch gap-2">
+            <div className="flex shrink-0 flex-wrap items-stretch gap-2">
               <button
                 type="button"
                 onClick={() => setMapLayersModalOpen(true)}
                 className="inline-flex min-h-10 items-center justify-center rounded-md border border-violet-700/55 bg-slate-950/80 px-3 text-xs font-medium text-violet-100/90 hover:border-violet-500/60 hover:bg-violet-950/45"
               >
                 Map filters
+              </button>
+              <button
+                type="button"
+                onClick={() => setMapControlsModalOpen(true)}
+                className="inline-flex min-h-10 items-center justify-center rounded-md border border-violet-700/55 bg-slate-950/80 px-3 text-xs font-medium text-violet-100/90 hover:border-violet-500/60 hover:bg-violet-950/45"
+              >
+                Map controls
               </button>
               <button
                 type="button"
@@ -2301,17 +2318,36 @@ export function StratStageEditor({
             {overlay}
           </StratMapViewer>
         </div>
-        <div className="mt-2 min-w-0 shrink-0 rounded-lg border border-violet-800/40 bg-slate-950/55 px-3 py-2.5">
-          {mapPlacementStatusText ? (
+        {mapPlacementStatusText ? (
+          <div className="mt-2 min-w-0 shrink-0 rounded-lg border border-violet-800/40 bg-slate-950/55 px-3 py-2.5">
             <p className="wrap-anywhere text-sm font-medium leading-snug text-violet-100/95">
               {mapPlacementStatusText}
             </p>
-          ) : activeStage ? (
-            <div className="space-y-2">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-400/75">
-                Map controls
-              </p>
-              <ul className="grid gap-2 sm:grid-cols-2">
+          </div>
+        ) : null}
+
+        {mapControlsModalOpen ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <button
+              type="button"
+              className="absolute inset-0 bg-slate-950/75"
+              onClick={() => setMapControlsModalOpen(false)}
+              aria-label="Close map controls"
+            />
+            <div className="relative z-10 w-full max-w-[min(100%,48rem)] min-w-0 rounded-xl border border-violet-600/35 bg-slate-950 px-4 py-4 shadow-2xl shadow-violet-950/45">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-violet-100">
+                  Map controls
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setMapControlsModalOpen(false)}
+                  className="rounded-md border border-violet-700/50 px-2 py-1 text-xs text-violet-200 hover:bg-violet-950/45"
+                >
+                  Close
+                </button>
+              </div>
+              <ul className="grid max-h-[70dvh] gap-2 overflow-y-auto sm:grid-cols-2">
                 <li className="flex gap-2 rounded-md border border-violet-800/25 bg-slate-950/50 px-2 py-1.5">
                   <MousePointerClick
                     className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-400/90"
@@ -2358,8 +2394,8 @@ export function StratStageEditor({
                 </li>
               </ul>
             </div>
-          ) : null}
-        </div>
+          </div>
+        ) : null}
         {stageSelectorUnderMap}
         {agentVisionContextMenu ? (
           <>
