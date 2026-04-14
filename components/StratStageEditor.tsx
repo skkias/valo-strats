@@ -159,6 +159,21 @@ function wrapDeg180(deg: number): number {
   return x;
 }
 
+function clampFixedMenuPosition(
+  clientX: number,
+  clientY: number,
+  menuW: number,
+  menuH: number,
+): { left: number; top: number } {
+  if (typeof window === "undefined") {
+    return { left: clientX, top: clientY };
+  }
+  return {
+    left: Math.max(8, Math.min(clientX, window.innerWidth - menuW)),
+    top: Math.max(8, Math.min(clientY, window.innerHeight - menuH)),
+  };
+}
+
 function newItemId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -192,7 +207,7 @@ export function StratStageEditor({
   agentsCatalog: Agent[];
   stages: StratStage[];
   onStagesChange: (next: StratStage[]) => void;
-  /** Portal target for Stage/Tokens UI (e.g. coach left column). */
+  /** Portal target for Stage UI (e.g. coach left column). */
   controlsMountEl: HTMLElement | null;
   /** Portal target for the map viewer only (e.g. coach right column). */
   mapMountEl: HTMLElement | null;
@@ -211,7 +226,14 @@ export function StratStageEditor({
   const [agentStageTrans, setAgentStageTrans] =
     useState<StratAgentTokenTransition | null>(null);
   /** Left column: stage fields vs token placement controls. */
-  const [editorTab, setEditorTab] = useState<"stage" | "tokens">("stage");
+  const [tokenTrayOpenSlug, setTokenTrayOpenSlug] = useState<string | null>(
+    null,
+  );
+  const [agentVisionContextMenu, setAgentVisionContextMenu] = useState<{
+    clientX: number;
+    clientY: number;
+    agentId: string;
+  } | null>(null);
   /** Valorant API ability names/descriptions keyed by agent slug. */
   const [valorantAbilityUi, setValorantAbilityUi] = useState<
     Record<string, ValorantAbilityUiMeta[]>
@@ -569,6 +591,8 @@ export function StratStageEditor({
         setSelectedId(null);
         setAbilityDirPreview(null);
         setPlacementMode(null);
+        setTokenTrayOpenSlug(null);
+        setAgentVisionContextMenu(null);
         return;
       }
       if (e.key !== "Delete" && e.key !== "Backspace") return;
@@ -602,6 +626,11 @@ export function StratStageEditor({
     setAgents,
     setAbilities,
   ]);
+
+  useEffect(() => {
+    setTokenTrayOpenSlug(null);
+    setAgentVisionContextMenu(null);
+  }, [activeStageIndex]);
 
   useEffect(() => {
     if (!drag) {
@@ -774,6 +803,7 @@ export function StratStageEditor({
   function onMapBackgroundPointerDown(e: React.PointerEvent) {
     if (e.button !== 0) return;
     if (!placementMode || !svgRef.current || !activeStage) return;
+    setTokenTrayOpenSlug(null);
     const raw = svgPointerToLogical(svgRef.current, e.clientX, e.clientY);
     const pDisplay = clampPointToViewBox(vb, raw);
     const p = stratStagePinToStoredAttack(
@@ -933,6 +963,40 @@ export function StratStageEditor({
     return false;
   }, [activeStage, placementMode, agentsCatalog, selectedId]);
 
+  const mapPlacementStatusText = useMemo(() => {
+    if (!activeStage) return "";
+    if (!placementMode) {
+      return "Click a comp portrait above to place an agent or ability. Right-click a token for vision cone. Drag tokens and ability pins to adjust. Delete/Backspace removes the selection.";
+    }
+    if (placementMode.kind === "agent") {
+      const r = roster.find((x) => x.slug === placementMode.slug);
+      return `Placing agent token (${r?.name ?? placementMode.slug}) — click the map to drop.`;
+    }
+    const r = roster.find((x) => x.slug === placementMode.slug);
+    const who = r?.name ?? placementMode.slug;
+    const slot = placementMode.slot.toUpperCase();
+    if (placementMode.pendingOriginAttack) {
+      return `Placing ${who} ${slot} — click the map to set facing.`;
+    }
+    const b = agentBlueprintForSlot(
+      agentsCatalog,
+      placementMode.slug,
+      placementMode.slot,
+    );
+    if (b && effectiveStratAttachToAgent(b)) {
+      const m = effectiveStratPlacementMode(b);
+      if (m === "origin_direction") {
+        return `Placing ${who} ${slot} — click the map to aim from the agent token.`;
+      }
+      return `Placing ${who} ${slot} — click the map to drop on the agent.`;
+    }
+    const m = b ? effectiveStratPlacementMode(b) : "center";
+    if (m === "origin_direction") {
+      return `Placing ${who} ${slot} — click the map for origin, then again for direction.`;
+    }
+    return `Placing ${who} ${slot} — click the map to place.`;
+  }, [activeStage, placementMode, roster, agentsCatalog]);
+
   const selectedAgentId =
     activeStage?.agents.some((a) => a.id === selectedId) ? selectedId : null;
   const orderedVisionConeAgents = useMemo(() => {
@@ -972,6 +1036,8 @@ export function StratStageEditor({
             return;
           }
           setSelectedId(null);
+          setTokenTrayOpenSlug(null);
+          setAgentVisionContextMenu(null);
         }}
         onPointerMove={(e) => {
           if (
@@ -1485,6 +1551,14 @@ export function StratStageEditor({
               });
             }
           },
+          onContextMenu: (a, _pos, e) => {
+            setSelectedId(a.id);
+            setAgentVisionContextMenu({
+              clientX: e.clientX,
+              clientY: e.clientY,
+              agentId: a.id,
+            });
+          },
         }}
       />
     </g>
@@ -1522,38 +1596,80 @@ export function StratStageEditor({
     });
   }
 
+  const stageSelectorUnderMap = (
+    <div className="mt-2 shrink-0 rounded-lg border border-violet-800/40 bg-slate-950/50 px-3 py-2.5">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-0 flex-1">
+          <span className="label">Stages</span>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {stages.map((st, idx) => (
+              <div key={st.id} className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setActiveStageIndex(idx)}
+                  className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
+                    idx === activeStageIndex
+                      ? "border-violet-500/70 bg-violet-950/50 text-white"
+                      : "border-violet-800/40 bg-slate-950/50 text-violet-200/80 hover:border-violet-600/50"
+                  }`}
+                >
+                  {st.title || `Stage ${idx + 1}`}
+                </button>
+                {stages.length > 1 ? (
+                  <button
+                    type="button"
+                    title="Remove stage"
+                    onClick={() => removeStage(idx)}
+                    className="rounded p-1 text-violet-400/60 hover:bg-fuchsia-950/40 hover:text-fuchsia-200"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                ) : null}
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={addStage}
+              className="btn-secondary inline-flex items-center gap-1 py-1.5 text-xs"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Stage
+            </button>
+          </div>
+        </div>
+        <div className="flex gap-1">
+          <button
+            type="button"
+            className="btn-secondary p-2"
+            disabled={activeStageIndex <= 0}
+            onClick={() => setActiveStageIndex((i) => Math.max(0, i - 1))}
+            title="Previous stage"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            className="btn-secondary p-2"
+            disabled={activeStageIndex >= stages.length - 1}
+            onClick={() =>
+              setActiveStageIndex((i) => Math.min(stages.length - 1, i + 1))
+            }
+            title="Next stage"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   const controlsPanel = !activeStage ? (
     <p className="text-sm text-amber-200/80">
       Add strat stages data (save error). Try refreshing the coach page.
     </p>
   ) : (
     <div className="flex min-h-0 w-full min-w-0 flex-col">
-      <div className="flex gap-1 rounded-lg border border-violet-800/45 bg-slate-950/70 p-0.5">
-          <button
-            type="button"
-            onClick={() => setEditorTab("stage")}
-            className={`min-w-0 flex-1 rounded-md px-3 py-2 text-center text-sm font-medium transition ${
-              editorTab === "stage"
-                ? "bg-violet-600 text-white shadow-md shadow-violet-900/30"
-                : "text-violet-300/80 hover:bg-violet-950/50 hover:text-violet-100"
-            }`}
-          >
-            Stage
-          </button>
-          <button
-            type="button"
-            onClick={() => setEditorTab("tokens")}
-            className={`min-w-0 flex-1 rounded-md px-3 py-2 text-center text-sm font-medium transition ${
-              editorTab === "tokens"
-                ? "bg-violet-600 text-white shadow-md shadow-violet-900/30"
-                : "text-violet-300/80 hover:bg-violet-950/50 hover:text-violet-100"
-            }`}
-          >
-            Tokens
-          </button>
-        </div>
-
-        <div className="mt-3 rounded-lg border border-violet-800/40 bg-slate-950/50 px-3 py-2.5">
+        <div className="rounded-lg border border-violet-800/40 bg-slate-950/50 px-3 py-2.5">
           <div className="flex items-center justify-between gap-2">
             <label
               className="text-xs font-medium text-violet-200/90"
@@ -1583,78 +1699,16 @@ export function StratStageEditor({
             Live on the map. Saved in this browser; public view uses the same
             setting.
           </p>
+          {valorantUiError ? (
+            <p className="mt-2 text-[10px] leading-snug text-amber-200/75">
+              Could not load Valorant ability names ({valorantUiError}). Slot
+              letters still work on the map tray.
+            </p>
+          ) : null}
         </div>
 
         <div className="mt-3 min-h-0 flex-1 overflow-y-auto overscroll-contain pr-0.5 [scrollbar-gutter:stable]">
-          {editorTab === "stage" ? (
             <div className="space-y-4">
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="min-w-0 flex-1">
-                  <span className="label">Stages</span>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    {stages.map((st, idx) => (
-                      <div key={st.id} className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => setActiveStageIndex(idx)}
-                          className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition ${
-                            idx === activeStageIndex
-                              ? "border-violet-500/70 bg-violet-950/50 text-white"
-                              : "border-violet-800/40 bg-slate-950/50 text-violet-200/80 hover:border-violet-600/50"
-                          }`}
-                        >
-                          {st.title || `Stage ${idx + 1}`}
-                        </button>
-                        {stages.length > 1 ? (
-                          <button
-                            type="button"
-                            title="Remove stage"
-                            onClick={() => removeStage(idx)}
-                            className="rounded p-1 text-violet-400/60 hover:bg-fuchsia-950/40 hover:text-fuchsia-200"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        ) : null}
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      onClick={addStage}
-                      className="btn-secondary inline-flex items-center gap-1 py-1.5 text-xs"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      Stage
-                    </button>
-                  </div>
-                </div>
-                <div className="flex gap-1">
-                  <button
-                    type="button"
-                    className="btn-secondary p-2"
-                    disabled={activeStageIndex <= 0}
-                    onClick={() =>
-                      setActiveStageIndex((i) => Math.max(0, i - 1))
-                    }
-                    title="Previous stage"
-                  >
-                    <ChevronLeft className="h-4 w-4" />
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-secondary p-2"
-                    disabled={activeStageIndex >= stages.length - 1}
-                    onClick={() =>
-                      setActiveStageIndex((i) =>
-                        Math.min(stages.length - 1, i + 1),
-                      )
-                    }
-                    title="Next stage"
-                  >
-                    <ChevronRight className="h-4 w-4" />
-                  </button>
-                </div>
-              </div>
-
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="sm:col-span-2">
                   <label className="label" htmlFor={`st-title-${activeStage.id}`}>
@@ -1797,271 +1851,6 @@ export function StratStageEditor({
                 </div>
               ) : null}
             </div>
-          ) : (
-            <div className="rounded-lg border border-violet-800/35 bg-slate-950/40 p-3">
-              <p className="text-xs text-violet-300/70">
-                {placementMode ? (
-                  <>
-                    <span className="text-violet-200">Placement mode:</span>{" "}
-                    {placementMode.kind === "agent" ? (
-                      <>click the map to drop an agent token ({placementMode.slug}).</>
-                    ) : placementMode.kind === "ability" ? (
-                      (() => {
-                        const b = agentBlueprintForSlot(
-                          agentsCatalog,
-                          placementMode.slug,
-                          placementMode.slot,
-                        );
-                        if (b && effectiveStratAttachToAgent(b)) {
-                          const m = effectiveStratPlacementMode(b);
-                          return m === "origin_direction" ? (
-                            <>
-                              One click:{" "}
-                              <strong className="text-cyan-200">aim</strong> from the
-                              agent token (preview line from the pin).
-                            </>
-                          ) : (
-                            <>
-                              One click on the map drops{" "}
-                              {placementMode.slot.toUpperCase()} on the agent token.
-                            </>
-                          );
-                        }
-                        if (placementMode.pendingOriginAttack) {
-                          return (
-                            <>
-                              Second click:{" "}
-                              <strong className="text-violet-200">face</strong>{" "}
-                              {placementMode.slot.toUpperCase()} for{" "}
-                              {placementMode.slug} (color-matched preview line).
-                            </>
-                          );
-                        }
-                        const m = b
-                          ? effectiveStratPlacementMode(b)
-                          : "center";
-                        return m === "origin_direction" ? (
-                          <>
-                            Click the map for{" "}
-                            <strong className="text-cyan-200">origin</strong>, then
-                            again for direction.
-                          </>
-                        ) : (
-                          <>
-                            Click the map for{" "}
-                            {placementMode.slot.toUpperCase()} ({placementMode.slug}).
-                          </>
-                        );
-                      })()
-                    ) : null}{" "}
-                    <button
-                      type="button"
-                      className="text-violet-300 underline"
-                      onClick={() => setPlacementMode(null)}
-                    >
-                      Cancel
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    Choose <strong className="text-slate-200">agent name</strong>{" "}
-                    or a <strong className="text-slate-200">Q/E/C/X</strong> chip,
-                    then click the map. Select an agent to attach a{" "}
-                    <strong className="text-slate-200">vision cone</strong> (wide or
-                    thin). Drag pins to adjust; select a pin — the map grabs focus —
-                    then Delete or Backspace removes it (Escape clears selection).{" "}
-                    {
-                      "Ability chips follow each agent's coach blueprint. Use \"Attach to agent token\" in coach for shapes like Paranoia that pivot on the agent."
-                    }
-                  </>
-                )}
-              </p>
-              {valorantUiError ? (
-                <p className="mt-2 text-[11px] text-amber-200/70">
-                  Could not load Valorant ability names ({valorantUiError}). Slot
-                  letters still work.
-                </p>
-              ) : null}
-              <div className="mt-3 rounded-md border border-violet-800/30 bg-slate-950/35 p-2">
-                <p className="text-[11px] font-medium text-violet-300/80">
-                  Agent vision cone
-                </p>
-                {activeStage.agents.some((a) => a.id === selectedId) ? (
-                  <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    {(
-                      [
-                        { key: "off" as const, label: "Off" },
-                        { key: "wide" as const, label: "Wide" },
-                        { key: "thin" as const, label: "Thin" },
-                      ] as const
-                    ).map(({ key, label }) => {
-                      const ag = activeStage.agents.find(
-                        (x) => x.id === selectedId,
-                      )!;
-                      const cur =
-                        ag.visionConeWidth === "wide" ||
-                        ag.visionConeWidth === "thin"
-                          ? ag.visionConeWidth
-                          : ("off" as const);
-                      const active = cur === key;
-                      return (
-                        <button
-                          key={key}
-                          type="button"
-                          onClick={() => {
-                            if (key === "off") {
-                              setAgents(
-                                activeStageIndex,
-                                activeStage.agents.map((a) => {
-                                  if (a.id !== selectedId) return a;
-                                  const {
-                                    visionConeWidth: _vw,
-                                    visionConeRotationDeg: _vr,
-                                    ...rest
-                                  } = a;
-                                  return rest;
-                                }),
-                              );
-                              return;
-                            }
-                            setAgents(
-                              activeStageIndex,
-                              activeStage.agents.map((a) =>
-                                a.id === selectedId
-                                  ? {
-                                      ...a,
-                                      visionConeWidth: key,
-                                      visionConeRotationDeg:
-                                        a.visionConeRotationDeg ?? 0,
-                                    }
-                                  : a,
-                              ),
-                            );
-                          }}
-                          className={`rounded-md border px-2 py-1 text-xs font-medium ${
-                            active
-                              ? "border-fuchsia-400 bg-fuchsia-950/60 text-white"
-                              : "border-violet-800/45 bg-slate-950/60 text-violet-200"
-                          }`}
-                        >
-                          {label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="mt-1.5 text-[10px] leading-snug text-violet-500/75">
-                    Select an agent token on the map, then choose wide or thin. Drag
-                    along the dashed look line or the pink handle to aim (handle slides
-                    on the line, clamped to the map); the cone moves with the agent.
-                  </p>
-                )}
-              </div>
-              {roster.length === 0 ? (
-                <p className="mt-2 text-xs text-amber-200/80">
-                  Fill the five agents in the comp (Details tab) to enable agent
-                  tokens and ability chips.
-                </p>
-              ) : (
-                <div className="mt-3 flex flex-wrap gap-3">
-                  {roster.map((r) => {
-                    const agentPlacedOnStage =
-                      activeStage?.agents.some((x) => x.agentSlug === r.slug) ??
-                      false;
-                    return (
-                    <div
-                      key={r.slug}
-                      className="flex max-w-full flex-col gap-1 rounded-lg border border-violet-800/30 bg-slate-950/30 px-2 py-2"
-                    >
-                      <div className="flex flex-wrap items-center gap-1">
-                        <button
-                          type="button"
-                          disabled={agentPlacedOnStage}
-                          title={
-                            agentPlacedOnStage
-                              ? "This agent is already on this stage"
-                              : undefined
-                          }
-                          onClick={() =>
-                            setPlacementMode((m) =>
-                              m?.kind === "agent" && m.slug === r.slug
-                                ? null
-                                : { kind: "agent", slug: r.slug },
-                            )
-                          }
-                          className={`rounded-md border px-2 py-1 text-xs font-medium ${
-                            placementMode?.kind === "agent" &&
-                            placementMode.slug === r.slug
-                              ? "border-violet-400 bg-violet-950/60 text-white"
-                              : "border-violet-800/45 bg-slate-950/60 text-violet-200"
-                          } disabled:cursor-not-allowed disabled:opacity-45`}
-                        >
-                          {r.name}
-                        </button>
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {r.allowedAbilitySlots.map((slot) => {
-                          const vm = abilityMetaForSlot(
-                            valorantAbilityUi,
-                            r.slug,
-                            slot,
-                          );
-                          const bpChip = agentBlueprintForSlot(
-                            agentsCatalog,
-                            r.slug,
-                            slot,
-                          );
-                          const attachNeedsToken =
-                            bpChip != null &&
-                            effectiveStratAttachToAgent(bpChip) &&
-                            !agentPlacedOnStage;
-                          const title = attachNeedsToken
-                            ? `Place ${r.name} on the map first — this ability attaches to the agent token.`
-                            : vm
-                              ? `${vm.displayName}\n\n${vm.description}`
-                              : `Place ${slot.toUpperCase()} for ${r.name}`;
-                          return (
-                            <button
-                              key={slot}
-                              type="button"
-                              disabled={attachNeedsToken}
-                              title={title}
-                              onClick={() =>
-                                setPlacementMode((m) =>
-                                  m?.kind === "ability" &&
-                                  m.slug === r.slug &&
-                                  m.slot === slot
-                                    ? null
-                                    : { kind: "ability", slug: r.slug, slot },
-                                )
-                              }
-                              className={`flex min-h-9 min-w-13 max-w-28 flex-col items-center justify-center rounded border px-1 py-0.5 text-left leading-tight transition ${
-                                placementMode?.kind === "ability" &&
-                                placementMode.slug === r.slug &&
-                                placementMode.slot === slot
-                                  ? "border-cyan-400 bg-cyan-950/50 text-white"
-                                  : "border-violet-800/50 bg-slate-950/70 text-violet-200"
-                              } disabled:cursor-not-allowed disabled:opacity-45`}
-                            >
-                              <span className="text-[11px] font-bold">
-                                {slot.toUpperCase()}
-                              </span>
-                              {vm ? (
-                                <span className="line-clamp-2 w-full text-center text-[9px] font-normal text-violet-300/85">
-                                  {vm.displayName}
-                                </span>
-                              ) : null}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
         </div>
     </div>
   );
@@ -2069,23 +1858,253 @@ export function StratStageEditor({
   const mapPanel =
     activeStage ? (
       <div className="flex min-h-[min(56dvh,720px)] w-full min-w-0 flex-1 flex-col lg:min-h-0 lg:flex-1">
-        <StratMapViewer
-          ref={svgRef}
-          gameMap={gameMap}
-          side={editorFrameSide}
-          rotateView180={rotateView180}
-          showLayerToggles
-          showFooter={false}
-          embed
-          initialVisibility={activeStage.mapLayerVisibility}
-          visibilityScopeKey={activeStage.id}
-          doorOpenByOverlayId={activeStage.doorOpenByOverlayId}
-          onVisibilityChange={(next) =>
-            patchStage(activeStageIndex, { mapLayerVisibility: next })
-          }
-        >
-          {overlay}
-        </StratMapViewer>
+        <div className="relative z-20 shrink-0 border-b border-violet-800/40 bg-slate-950/95 px-2 py-2">
+          {roster.length === 0 ? (
+            <p className="text-xs text-amber-200/85">
+              Add agents in the Details tab comp to use the portrait tray above the
+              map.
+            </p>
+          ) : (
+            <div className="flex flex-wrap items-start gap-2">
+              {roster.map((r) => {
+                const agentPlacedOnStage = activeStage.agents.some(
+                  (x) => x.agentSlug === r.slug,
+                );
+                const trayOpen = tokenTrayOpenSlug === r.slug;
+                const portraitActive =
+                  (placementMode?.kind === "agent" &&
+                    placementMode.slug === r.slug) ||
+                  (placementMode?.kind === "ability" &&
+                    placementMode.slug === r.slug);
+                return (
+                  <div key={r.slug} className="relative">
+                    <button
+                      type="button"
+                      title={r.name}
+                      onClick={() => {
+                        setTokenTrayOpenSlug((s) =>
+                          s === r.slug ? null : r.slug,
+                        );
+                        focusMapSvg();
+                      }}
+                      className={`relative block rounded-full border-2 transition ${
+                        trayOpen || portraitActive
+                          ? "border-violet-400 shadow-md shadow-violet-900/40"
+                          : "border-violet-800/50 hover:border-violet-500/70"
+                      }`}
+                    >
+                      {r.portraitUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- coach roster portraits from Valorant CDN
+                        <img
+                          src={r.portraitUrl}
+                          alt=""
+                          className="h-11 w-11 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-violet-950/80 text-sm font-bold text-violet-100">
+                          {r.name.slice(0, 1)}
+                        </div>
+                      )}
+                    </button>
+                    {trayOpen ? (
+                      <div className="absolute left-0 top-[calc(100%+6px)] z-30 min-w-[220px] max-w-[min(320px,92vw)] rounded-xl border border-violet-700/50 bg-slate-950 px-2 py-2 shadow-2xl shadow-violet-950/50">
+                        <p className="mb-1.5 text-[10px] font-medium text-violet-400/90">
+                          {r.name}
+                        </p>
+                        <button
+                          type="button"
+                          disabled={agentPlacedOnStage}
+                          title={
+                            agentPlacedOnStage
+                              ? "This agent is already on this stage"
+                              : "Then click the map to drop the token"
+                          }
+                          onClick={() => {
+                            setPlacementMode((m) =>
+                              m?.kind === "agent" && m.slug === r.slug
+                                ? null
+                                : { kind: "agent", slug: r.slug },
+                            );
+                            focusMapSvg();
+                          }}
+                          className={`w-full rounded-lg border px-2 py-1.5 text-left text-xs font-medium ${
+                            placementMode?.kind === "agent" &&
+                            placementMode.slug === r.slug
+                              ? "border-violet-400 bg-violet-950/60 text-white"
+                              : "border-violet-800/45 bg-slate-950/60 text-violet-200 hover:border-violet-600/50"
+                          } disabled:cursor-not-allowed disabled:opacity-45`}
+                        >
+                          Place agent token
+                        </button>
+                        <div className="mt-2 flex flex-wrap gap-1 border-t border-violet-800/35 pt-2">
+                          {r.allowedAbilitySlots.map((slot) => {
+                            const vm = abilityMetaForSlot(
+                              valorantAbilityUi,
+                              r.slug,
+                              slot,
+                            );
+                            const bpChip = agentBlueprintForSlot(
+                              agentsCatalog,
+                              r.slug,
+                              slot,
+                            );
+                            const attachNeedsToken =
+                              bpChip != null &&
+                              effectiveStratAttachToAgent(bpChip) &&
+                              !agentPlacedOnStage;
+                            const title = attachNeedsToken
+                              ? `Place ${r.name} on the map first — this ability attaches to the agent token.`
+                              : vm
+                                ? `${vm.displayName}\n\n${vm.description}`
+                                : `Place ${slot.toUpperCase()} for ${r.name}`;
+                            return (
+                              <button
+                                key={slot}
+                                type="button"
+                                disabled={attachNeedsToken}
+                                title={title}
+                                onClick={() => {
+                                  setPlacementMode((m) =>
+                                    m?.kind === "ability" &&
+                                    m.slug === r.slug &&
+                                    m.slot === slot
+                                      ? null
+                                      : { kind: "ability", slug: r.slug, slot },
+                                  );
+                                  focusMapSvg();
+                                }}
+                                className={`flex min-h-9 min-w-13 max-w-30 flex-col items-center justify-center rounded border px-1 py-0.5 text-left leading-tight transition ${
+                                  placementMode?.kind === "ability" &&
+                                  placementMode.slug === r.slug &&
+                                  placementMode.slot === slot
+                                    ? "border-cyan-400 bg-cyan-950/50 text-white"
+                                    : "border-violet-800/50 bg-slate-950/70 text-violet-200"
+                                } disabled:cursor-not-allowed disabled:opacity-45`}
+                              >
+                                <span className="text-[11px] font-bold">
+                                  {slot.toUpperCase()}
+                                </span>
+                                {vm ? (
+                                  <span className="line-clamp-2 w-full text-center text-[9px] font-normal text-violet-300/85">
+                                    {vm.displayName}
+                                  </span>
+                                ) : null}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {placementMode ? (
+                          <button
+                            type="button"
+                            className="mt-2 w-full text-center text-[10px] text-violet-400 underline hover:text-violet-200"
+                            onClick={() => {
+                              setPlacementMode(null);
+                              setAbilityDirPreview(null);
+                            }}
+                          >
+                            Cancel placement
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <p className="mt-2 text-[11px] leading-snug text-violet-200/95">
+            {mapPlacementStatusText}
+          </p>
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col">
+          <StratMapViewer
+            ref={svgRef}
+            gameMap={gameMap}
+            side={editorFrameSide}
+            rotateView180={rotateView180}
+            showLayerToggles
+            showFooter={false}
+            embed
+            initialVisibility={activeStage.mapLayerVisibility}
+            visibilityScopeKey={activeStage.id}
+            doorOpenByOverlayId={activeStage.doorOpenByOverlayId}
+            onVisibilityChange={(next) =>
+              patchStage(activeStageIndex, { mapLayerVisibility: next })
+            }
+          >
+            {overlay}
+          </StratMapViewer>
+        </div>
+        {stageSelectorUnderMap}
+        {agentVisionContextMenu ? (
+          <>
+            <button
+              type="button"
+              aria-label="Dismiss menu"
+              className="fixed inset-0 z-45 cursor-default bg-transparent"
+              onPointerDown={() => setAgentVisionContextMenu(null)}
+            />
+            <div
+              role="menu"
+              className="fixed z-50 min-w-42 rounded-lg border border-violet-700/55 bg-slate-950 py-1 shadow-2xl shadow-violet-950/50"
+              style={clampFixedMenuPosition(
+                agentVisionContextMenu.clientX,
+                agentVisionContextMenu.clientY,
+                176,
+                132,
+              )}
+            >
+              {(
+                [
+                  { key: "off" as const, label: "Vision cone: Off" },
+                  { key: "wide" as const, label: "Vision cone: Wide" },
+                  { key: "thin" as const, label: "Vision cone: Thin" },
+                ] as const
+              ).map(({ key, label }) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="menuitem"
+                  className="block w-full px-3 py-2 text-left text-xs text-violet-100 hover:bg-violet-900/45"
+                  onClick={() => {
+                    const id = agentVisionContextMenu.agentId;
+                    if (key === "off") {
+                      setAgents(
+                        activeStageIndex,
+                        activeStage.agents.map((ag) => {
+                          if (ag.id !== id) return ag;
+                          const {
+                            visionConeWidth: _vw,
+                            visionConeRotationDeg: _vr,
+                            ...rest
+                          } = ag;
+                          return rest;
+                        }),
+                      );
+                    } else {
+                      setAgents(
+                        activeStageIndex,
+                        activeStage.agents.map((ag) =>
+                          ag.id === id
+                            ? {
+                                ...ag,
+                                visionConeWidth: key,
+                                visionConeRotationDeg:
+                                  ag.visionConeRotationDeg ?? 0,
+                              }
+                            : ag,
+                        ),
+                      );
+                    }
+                    setAgentVisionContextMenu(null);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : null}
       </div>
     ) : null;
 

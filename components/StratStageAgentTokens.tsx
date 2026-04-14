@@ -35,6 +35,12 @@ type Interactive = {
     displayPos: { x: number; y: number },
     e: React.PointerEvent,
   ) => void;
+  /** Coach: vision cone / token menu (use `preventDefault` is handled here). */
+  onContextMenu?: (
+    agent: StratPlacedAgent,
+    displayPos: { x: number; y: number },
+    e: React.MouseEvent<SVGGElement>,
+  ) => void;
 };
 
 /**
@@ -178,7 +184,17 @@ export function StratStageAgentTokens({
             onPointerDown={
               interactive
                 ? (e) => {
+                    if (e.button !== 0) return;
                     interactive.onPointerDown(a, pos, e);
+                  }
+                : undefined
+            }
+            onContextMenu={
+              interactive?.onContextMenu
+                ? (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    interactive.onContextMenu!(a, pos, e);
                   }
                 : undefined
             }
