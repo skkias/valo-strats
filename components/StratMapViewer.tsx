@@ -845,7 +845,11 @@ export const StratMapViewer = forwardRef<SVGSVGElement, StratMapViewerProps>(
                   );
                 }
                 if (isCircleOverlay(sh) && sh.circle) {
-                  const poly = overlayPolygonStyle(sh.kind, overlayFloor(sh));
+                  const poly = overlayPolygonStyle(
+                    sh.kind,
+                    overlayFloor(sh),
+                    sh.kind === "obstacle" && !effectiveVis.obstacle,
+                  );
                   if (!poly) return null;
                   const c = sh.circle;
                   return (
