@@ -1,6 +1,7 @@
 import type { Agent } from "@/types/catalog";
 import type { AgentAbilityBlueprint } from "@/types/agent-ability";
 import type { StratPlacedAbility } from "@/types/strat";
+import { normalizeAgentAbilityBlueprint } from "@/lib/agent-abilities-normalize";
 import { normalizeAgentThemeColor } from "@/lib/agent-theme-color";
 
 /** Saved coach blueprint for a placed ability (key slot or custom + blueprint id). */
@@ -23,5 +24,8 @@ export function agentBlueprintForSlot(
     bp = a.abilities_blueprint.find((b) => b.slot === slot);
   }
   if (!bp) return undefined;
-  return { ...bp, color: theme };
+  /** Ensures point-mark options (symbol stroke, invert, etc.) match coach normalization everywhere. */
+  const normalized = normalizeAgentAbilityBlueprint(bp);
+  const merged = normalized ?? bp;
+  return { ...merged, color: theme };
 }
