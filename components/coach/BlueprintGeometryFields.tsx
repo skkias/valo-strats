@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { AgentAbilityGeometry } from "@/types/agent-ability";
 import type { MapPoint } from "@/lib/map-path";
 import {
@@ -41,14 +41,93 @@ function Row({
   );
 }
 
+function ricochetDistanceError(dist: number): string | null {
+  if (!Number.isFinite(dist)) {
+    return `Distance must be a number between 24 and ${BLUEPRINT_GEOMETRY_LENGTH_MAX}.`;
+  }
+  if (dist < 24 || dist > BLUEPRINT_GEOMETRY_LENGTH_MAX) {
+    return `Distance must be between 24 and ${BLUEPRINT_GEOMETRY_LENGTH_MAX}.`;
+  }
+  return null;
+}
+
+function RicochetDistanceField({
+  g,
+  onChange,
+  onValidityChange,
+}: {
+  g: Extract<AgentAbilityGeometry, { kind: "ricochet" }>;
+  onChange: (g: AgentAbilityGeometry) => void;
+  onValidityChange?: (error: string | null) => void;
+}) {
+  const dist = Math.hypot(g.bx - g.ax, g.by - g.ay);
+  const [draft, setDraft] = useState(() => String(Math.round(dist * 1000) / 1000));
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    if (editing) return;
+    setDraft(String(Math.round(dist * 1000) / 1000));
+  }, [dist, editing]);
+
+  useEffect(() => {
+    const parsed = Number.parseFloat(draft);
+    const err = ricochetDistanceError(parsed);
+    onValidityChange?.(err);
+  }, [draft, onValidityChange]);
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] leading-snug text-violet-400/90">
+        Ricochet path uses a fixed local origin and follows agent-facing rotation on the
+        strat map. Adjust travel distance only.
+      </p>
+      <label className="block text-[11px] text-violet-400/90">
+        Max travel distance (blueprint units)
+        <input
+          type="text"
+          inputMode="decimal"
+          value={draft}
+          onFocus={() => setEditing(true)}
+          onBlur={() => setEditing(false)}
+          onChange={(e) => {
+            const nextDraft = e.target.value;
+            setDraft(nextDraft);
+            const parsed = Number.parseFloat(nextDraft);
+            if (!Number.isFinite(parsed)) return;
+            onChange({
+              kind: "ricochet",
+              ax: 500,
+              ay: 500,
+              bx: 500 + parsed,
+              by: 500,
+            });
+          }}
+          className={fieldCls()}
+        />
+      </label>
+      {ricochetDistanceError(Number.parseFloat(draft)) ? (
+        <p className="text-[10px] text-rose-300/90">
+          {ricochetDistanceError(Number.parseFloat(draft))}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export function BlueprintGeometryFields({
   geometry,
   onChange,
+  onValidityChange,
 }: {
   geometry: AgentAbilityGeometry;
   onChange: (g: AgentAbilityGeometry) => void;
+  onValidityChange?: (error: string | null) => void;
 }) {
   const g = geometry;
+
+  useEffect(() => {
+    if (g.kind !== "ricochet") onValidityChange?.(null);
+  }, [g.kind, onValidityChange]);
 
   switch (g.kind) {
     case "point":
@@ -406,48 +485,14 @@ export function BlueprintGeometryFields({
           </Row>
         </>
       );
-    case "ricochet": {
-      const dist = Math.hypot(g.bx - g.ax, g.by - g.ay);
-      const clampedDist = Math.max(
-        24,
-        Math.min(BLUEPRINT_GEOMETRY_LENGTH_MAX, dist),
-      );
+    case "ricochet":
       return (
-        <div className="space-y-2">
-          <p className="text-[11px] leading-snug text-violet-400/90">
-            Ricochet path uses a fixed local origin and follows agent-facing rotation on the
-            strat map. Adjust travel distance only.
-          </p>
-          <label className="block text-[11px] text-violet-400/90">
-            Max travel distance (blueprint units)
-            <input
-              type="number"
-              min={24}
-              max={BLUEPRINT_GEOMETRY_LENGTH_MAX}
-              step="any"
-              value={Math.round(clampedDist * 1000) / 1000}
-              onChange={(e) => {
-                const next = Math.max(
-                  24,
-                  Math.min(
-                    BLUEPRINT_GEOMETRY_LENGTH_MAX,
-                    Number.parseFloat(e.target.value) || clampedDist,
-                  ),
-                );
-                onChange({
-                  kind: "ricochet",
-                  ax: 500,
-                  ay: 500,
-                  bx: 500 + next,
-                  by: 500,
-                });
-              }}
-              className={fieldCls()}
-            />
-          </label>
-        </div>
+        <RicochetDistanceField
+          g={g}
+          onChange={onChange}
+          onValidityChange={onValidityChange}
+        />
       );
-    }
     case "cone":
       return (
         <>

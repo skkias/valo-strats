@@ -722,6 +722,9 @@ export function AgentAbilityEditor({
   const [placement, setPlacement] = useState<Placement | null>(null);
   const [saving, setSaving] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
+  const [geometryFieldError, setGeometryFieldError] = useState<string | null>(
+    null,
+  );
   const [portraitUrl, setPortraitUrl] = useState(agent.portrait_url ?? "");
   const [portraitSaving, setPortraitSaving] = useState(false);
   const [themeColorDraft, setThemeColorDraft] = useState(themeColor);
@@ -807,6 +810,10 @@ export function AgentAbilityEditor({
       setSelectedId(abilities[0]?.id ?? null);
     }
   }, [abilities, selectedId]);
+
+  useEffect(() => {
+    setGeometryFieldError(null);
+  }, [selectedId]);
 
   const startPlacement = useCallback(() => {
     const name = draftName.trim() || "Ability";
@@ -1065,6 +1072,10 @@ export function AgentAbilityEditor({
   );
 
   async function onSave() {
+    if (geometryFieldError) {
+      setBanner(`Cannot save: ${geometryFieldError}`);
+      return;
+    }
     setSaving(true);
     setBanner(null);
     const theme = normalizeAgentThemeColor(themeColorDraft);
@@ -2035,6 +2046,7 @@ export function AgentAbilityEditor({
                 <BlueprintGeometryFields
                   geometry={selected.geometry}
                   onChange={updateSelectedGeometry}
+                  onValidityChange={setGeometryFieldError}
                 />
               </div>
             )}
@@ -2044,7 +2056,7 @@ export function AgentAbilityEditor({
             type="button"
             className="btn-primary inline-flex w-full items-center justify-center gap-2"
             onClick={() => void onSave()}
-            disabled={saving}
+            disabled={saving || geometryFieldError != null}
           >
             {saving ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -2053,6 +2065,9 @@ export function AgentAbilityEditor({
             )}
             Save to agent
           </button>
+          {geometryFieldError ? (
+            <p className="mt-2 text-xs text-rose-300/90">{geometryFieldError}</p>
+          ) : null}
         </div>
       </div>
 

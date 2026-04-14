@@ -254,13 +254,16 @@ export function StratStageEditor({
 
   const svgPointerToLogical = useCallback(
     (svg: SVGSVGElement, clientX: number, clientY: number) => {
-      const p = rootPointToLogicalGeometry(
-        clientToSvgPoint(svg, clientX, clientY),
-        vb,
-        mapGeoScale,
-      );
-      if (!rotateView180) return p;
-      return flipPointsThroughViewBoxCenter(vb, [p])[0] ?? p;
+      const raw = clientToSvgPoint(svg, clientX, clientY);
+      /**
+       * StratMapViewer nests transforms: uniform scale about center, then 180° about center.
+       * Forward: root = R(S(logical)). Invert: logical = S⁻¹(R(root)) — flip raw first, then
+       * undo scale (not scale then flip).
+       */
+      const preScale = rotateView180
+        ? (flipPointsThroughViewBoxCenter(vb, [raw])[0] ?? raw)
+        : raw;
+      return rootPointToLogicalGeometry(preScale, vb, mapGeoScale);
     },
     [vb, mapGeoScale, rotateView180],
   );
