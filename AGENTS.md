@@ -4,7 +4,7 @@
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
 
-# Valo Strats — project context
+# Hexecute — project context
 
 The sections below summarize an earlier conversation that shaped this repo. Use them when continuing work in this IDE so decisions and constraints stay aligned.
 
@@ -62,7 +62,7 @@ HTML on GitHub Pages; strats as data in-page (e.g. a `STRATS` array), ValoPlant 
 **Rough structure discussed for static / early app:**
 
 ```text
-valo-strats/
+hexecute/
 ├── app/ …
 ├── components/
 │   ├── StratGrid.tsx
@@ -157,7 +157,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key from Supabase → Settings → API>
 
 1. Install Node LTS; verify `node -v` / `npm -v`.
 2. Accounts: GitHub, Vercel (GitHub signup), Supabase (GitHub).
-3. `create-next-app` for `valo-strats` (TypeScript, ESLint, Tailwind, App Router, no `src/` if matching this repo).
+3. `create-next-app` for `hexecute` (TypeScript, ESLint, Tailwind, App Router, no `src/` if matching this repo).
 4. `npm install @supabase/supabase-js @supabase/ssr` and `lucide-react`.
 5. Supabase: new project → run SQL above → Settings → API for URL + anon key → `.env.local`.
 6. `.env.local` is gitignored.
