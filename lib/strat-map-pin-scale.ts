@@ -1,5 +1,5 @@
 /** Persisted coach preference: scales agent + ability pins on the strat map. */
-export const COACH_MAP_PIN_SCALE_STORAGE_KEY = "valo-strats:coachMapPinScale";
+export const COACH_MAP_PIN_SCALE_STORAGE_KEY = "hexecute:coachMapPinScale";
 
 /** Base radius as a fraction of map viewBox width (100% pin scale baseline). */
 export const STRAT_AGENT_TOKEN_VB_FRAC = 0.007;
@@ -50,7 +50,7 @@ export function writeCoachMapPinScale(scale: number): void {
       COACH_MAP_PIN_SCALE_STORAGE_KEY,
       String(clampCoachMapPinScale(scale)),
     );
-    window.dispatchEvent(new Event("valo-strats:coach-map-pin-scale"));
+    window.dispatchEvent(new Event("hexecute:coach-map-pin-scale"));
   } catch {
     /* ignore quota / private mode */
   }

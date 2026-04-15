@@ -39,7 +39,7 @@ export function SiteHeader() {
             href="/"
             className="shrink-0 text-sm font-semibold tracking-tight text-white drop-shadow-[0_0_18px_rgba(167,139,250,0.35)] transition hover:text-violet-300"
           >
-            Valo Strats
+            Hexecute
           </Link>
 
           <nav

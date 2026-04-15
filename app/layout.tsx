@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Valo Strats",
+  title: "Hexecute",
   description: "Team Valorant strategies — visuals and round plans in one place.",
 };
 

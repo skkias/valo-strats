@@ -1,4 +1,4 @@
-# Valo Strats
+# Hexecute
 
 Team strategy workspace for VALORANT: public strat browsing, coach editing tools, staged map plans, and documentation.
 

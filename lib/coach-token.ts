@@ -1,7 +1,7 @@
 /**
  * Coach-area cookie token (HMAC-SHA256 hex). Separate message from docs so cookies do not overlap.
  */
-const HMAC_MESSAGE = "valo-strats-coach-v1";
+const HMAC_MESSAGE = "hexecute-coach-v1";
 
 export const COACH_ACCESS_COOKIE = "coach_access";
 

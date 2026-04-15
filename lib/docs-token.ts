@@ -2,7 +2,7 @@
  * Shared docs-access cookie value (HMAC-SHA256 hex).
  * Uses Web Crypto so the same code runs in Edge middleware and Node.
  */
-const HMAC_MESSAGE = "valo-strats-documentation-v1";
+const HMAC_MESSAGE = "hexecute-documentation-v1";
 
 export const DOCS_ACCESS_COOKIE = "docs_access";
 

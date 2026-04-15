@@ -4,7 +4,7 @@ import { listAgents, listMaps } from "@/lib/catalog-queries";
 import type { Agent, GameMap } from "@/types/catalog";
 
 export const metadata: Metadata = {
-  title: "Coach · Valo Strats",
+  title: "Coach · Hexecute",
   description: "Create and edit team strategies.",
 };
 

@@ -1,8 +1,8 @@
-# Welcome to Valo Strats
+# Welcome to Hexecute
 
 These guides help **players** and **coaches** use the app. They open from the **Documentation** link in the header (your team may protect this area with a shared password).
 
-## What is Valo Strats?
+## What is Hexecute?
 
 A single place for your team’s **Valorant round plans**: short summaries on cards, full detail when you open a strat, and space for **map screenshots** (for example from ValoPlant) plus step-by-step notes.
 

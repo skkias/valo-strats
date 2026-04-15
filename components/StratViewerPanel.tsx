@@ -47,10 +47,10 @@ export function StratViewerPanel({
     setPinScale(readCoachMapPinScale());
     const sync = () => setPinScale(readCoachMapPinScale());
     window.addEventListener("storage", sync);
-    window.addEventListener("valo-strats:coach-map-pin-scale", sync);
+    window.addEventListener("hexecute:coach-map-pin-scale", sync);
     return () => {
       window.removeEventListener("storage", sync);
-      window.removeEventListener("valo-strats:coach-map-pin-scale", sync);
+      window.removeEventListener("hexecute:coach-map-pin-scale", sync);
     };
   }, []);
 
