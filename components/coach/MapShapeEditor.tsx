@@ -2601,7 +2601,7 @@ export function MapShapeEditor({
           )}
 
           <div
-            className="box-border flex min-h-0 w-full min-w-[var(--map-vp-min-w)] flex-1 select-none overflow-auto rounded-xl border border-violet-500/25 bg-black/40 max-h-[min(100%,min(var(--map-vp-max-dvh),var(--map-vp-max-h)))]"
+            className="box-border flex min-h-0 w-full min-w-(--map-vp-min-w) flex-1 select-none overflow-auto rounded-xl border border-violet-500/25 bg-black/40 max-h-[min(100%,min(var(--map-vp-max-dvh),var(--map-vp-max-h)))]"
             style={{ ...mapPanelVars, resize: "both" }}
             onKeyDown={(e) => e.stopPropagation()}
             onContextMenu={(e) => e.preventDefault()}
@@ -2611,7 +2611,7 @@ export function MapShapeEditor({
               role="img"
               aria-label="Map reference and trace canvas"
               viewBox={`${displayVb.minX} ${displayVb.minY} ${displayVb.width} ${displayVb.height}`}
-              className={`block h-full min-h-[var(--map-vp-min-h)] w-full min-w-[var(--map-vp-min-w)] touch-none select-none bg-zinc-950 ${
+              className={`block h-full min-h-(--map-vp-min-h) w-full min-w-(--map-vp-min-w) touch-none select-none bg-zinc-950 ${
                 rightPanning ? "cursor-grabbing" : "cursor-crosshair"
               }`}
               style={{ userSelect: "none" }}
@@ -4528,7 +4528,7 @@ export function MapShapeEditor({
       {saveToast && (
         <div
           role="status"
-          className={`fixed bottom-6 left-1/2 z-[100] flex max-w-[min(calc(100vw-2rem),24rem)] -translate-x-1/2 items-start gap-3 rounded-lg border px-4 py-3 text-sm shadow-lg ${
+          className={`fixed bottom-6 left-1/2 z-100 flex max-w-[min(calc(100vw-2rem),24rem)] -translate-x-1/2 items-start gap-3 rounded-lg border px-4 py-3 text-sm shadow-lg ${
             saveToast.kind === "ok"
               ? "border-emerald-600/50 bg-emerald-950/95 text-emerald-50"
               : "border-red-600/50 bg-red-950/95 text-red-50"

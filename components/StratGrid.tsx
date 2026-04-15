@@ -175,7 +175,7 @@ export function StratGrid({
               <select
                 value={sortKey}
                 onChange={(e) => setSortKey(e.target.value as SortKey)}
-                className="input-field min-w-[11rem] py-2 text-sm"
+                className="input-field min-w-44 py-2 text-sm"
                 aria-label="Sort strats"
               >
                 <option value="newest">Newest first</option>

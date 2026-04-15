@@ -3,6 +3,10 @@
 :root {
   --background: #0b0618;
   --foreground: #f5f3ff;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
   /* Scrollbars: Firefox (scrollbar-color) + IE/Edge legacy hint; WebKit uses vars below */
   --scrollbar-track: rgba(30, 27, 75, 0.75);
   --scrollbar-thumb: rgba(124, 58, 237, 0.42);
@@ -11,34 +15,21 @@
   --scrollbar-corner: #0b0618;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
 body {
   min-height: 100vh;
   background-color: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
   background-image:
-    radial-gradient(
-      ellipse 130% 100% at 8% -25%,
+    radial-gradient(ellipse 130% 100% at 8% -25%,
       rgba(192, 132, 252, 0.14),
-      transparent 52%
-    ),
-    radial-gradient(
-      ellipse 90% 80% at 100% 20%,
+      transparent 52%),
+    radial-gradient(ellipse 90% 80% at 100% 20%,
       rgba(91, 33, 182, 0.22),
-      transparent 48%
-    ),
-    radial-gradient(
-      ellipse 70% 55% at 50% 110%,
+      transparent 48%),
+    radial-gradient(ellipse 70% 55% at 50% 110%,
       rgba(30, 27, 75, 0.85),
-      transparent 58%
-    );
+      transparent 58%);
   background-attachment: fixed;
 }
 
@@ -90,32 +81,39 @@ body {
 }
 
 @layer base {
+
   /* Native controls: match hover affordance with pointer (overridable e.g. cursor-grab). */
   button:not(:disabled) {
     cursor: pointer;
   }
+
   button:disabled {
     cursor: not-allowed;
   }
+
   input[type="submit"]:not(:disabled),
   input[type="button"]:not(:disabled),
   input[type="reset"]:not(:disabled) {
     cursor: pointer;
   }
+
   input[type="submit"]:disabled,
   input[type="button"]:disabled,
   input[type="reset"]:disabled {
     cursor: not-allowed;
   }
+
   [role="button"]:not([aria-disabled="true"]) {
     cursor: pointer;
   }
+
   [role="button"][aria-disabled="true"] {
     cursor: not-allowed;
   }
 }
 
 @layer components {
+
   /**
    * Strat map ability blueprints: invisible fat stroke receives pointer events;
    * hover brightens the visible stroke so thin lines are easier to target.
@@ -126,6 +124,7 @@ body {
       opacity 0.14s ease,
       filter 0.14s ease;
   }
+
   g.strat-ability-line-group:hover path.strat-ability-line-visible,
   g.strat-ability-line-group:hover line.strat-ability-line-visible {
     opacity: 1;
@@ -133,20 +132,100 @@ body {
   }
 
   .input-field {
-    @apply min-w-0 max-w-full w-full rounded-lg border border-violet-800/50 bg-slate-950/60 px-3 py-2 text-sm text-slate-100 placeholder:text-violet-300/35;
-    @apply outline-none ring-violet-500/0 transition focus:border-violet-500/70 focus:ring-2 focus:ring-violet-500/25;
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
+    border-radius: 0.5rem;
+    border: 1px solid rgb(91 33 182 / 0.5);
+    background-color: rgb(2 6 23 / 0.6);
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    color: rgb(241 245 249);
+    outline: none;
+    transition:
+      border-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+      box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .input-field::placeholder {
+    color: rgb(196 181 253 / 0.35);
+  }
+
+  .input-field:focus {
+    border-color: rgb(139 92 246 / 0.7);
+    box-shadow: 0 0 0 2px rgb(139 92 246 / 0.25);
   }
 
   .label {
-    @apply text-xs font-medium uppercase tracking-wide text-violet-300/55;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+    color: rgb(196 181 253 / 0.55);
   }
 
   .btn-primary {
-    @apply inline-flex cursor-pointer items-center justify-center rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-violet-600/20 transition hover:bg-violet-500 hover:shadow-violet-500/25 disabled:cursor-not-allowed disabled:opacity-50;
+    display: inline-flex;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+    background-color: rgb(124 58 237);
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 600;
+    color: rgb(255 255 255);
+    box-shadow:
+      0 10px 15px -3px rgb(124 58 237 / 0.2),
+      0 4px 6px -4px rgb(124 58 237 / 0.2);
+    transition:
+      background-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+      box-shadow 150ms cubic-bezier(0.4, 0, 0.2, 1),
+      opacity 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .btn-primary:hover {
+    background-color: rgb(139 92 246);
+    box-shadow:
+      0 10px 15px -3px rgb(139 92 246 / 0.25),
+      0 4px 6px -4px rgb(139 92 246 / 0.25);
+  }
+
+  .btn-primary:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
   }
 
   .btn-secondary {
-    @apply inline-flex cursor-pointer items-center justify-center rounded-lg border border-violet-800/50 bg-slate-950/50 px-4 py-2 text-sm font-medium text-slate-200 transition hover:border-violet-600/40 hover:bg-violet-950/30 disabled:cursor-not-allowed disabled:opacity-50;
+    display: inline-flex;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+    border: 1px solid rgb(91 33 182 / 0.5);
+    background-color: rgb(2 6 23 / 0.5);
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-weight: 500;
+    color: rgb(226 232 240);
+    transition:
+      border-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+      background-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+      opacity 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .btn-secondary:hover {
+    border-color: rgb(124 58 237 / 0.4);
+    background-color: rgb(46 16 101 / 0.3);
+  }
+
+  .btn-secondary:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
   }
 }
 
@@ -155,25 +234,30 @@ body {
   from {
     opacity: 0.2;
   }
+
   to {
     opacity: 1;
   }
 }
+
 @keyframes strat-stage-slide-from-right {
   from {
     opacity: 0.35;
     transform: translateX(22px);
   }
+
   to {
     opacity: 1;
     transform: translateX(0);
   }
 }
+
 @keyframes strat-stage-slide-from-left {
   from {
     opacity: 0.35;
     transform: translateX(-22px);
   }
+
   to {
     opacity: 1;
     transform: translateX(0);

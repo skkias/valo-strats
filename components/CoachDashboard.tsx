@@ -426,7 +426,7 @@ export function CoachDashboard({
           <div className="flex w-full max-w-none min-w-0 flex-col gap-6 px-4 pt-4 pb-4 md:min-h-0 md:flex-1 md:overflow-hidden md:px-6 lg:px-8">
       {catalogError && (
         <p
-          className="min-w-0 shrink-0 break-words rounded-lg border border-fuchsia-900/50 bg-fuchsia-950/30 px-4 py-3 text-sm text-fuchsia-200"
+          className="min-w-0 shrink-0 wrap-break-word rounded-lg border border-fuchsia-900/50 bg-fuchsia-950/30 px-4 py-3 text-sm text-fuchsia-200"
           role="alert"
         >
           {catalogError}{" "}
@@ -442,7 +442,7 @@ export function CoachDashboard({
 
       {banner && (
         <p
-          className="min-w-0 shrink-0 break-words rounded-lg border border-violet-800/40 bg-slate-950/60 px-4 py-3 text-sm text-slate-200"
+          className="min-w-0 shrink-0 wrap-break-word rounded-lg border border-violet-800/40 bg-slate-950/60 px-4 py-3 text-sm text-slate-200"
           role="status"
         >
           {banner}

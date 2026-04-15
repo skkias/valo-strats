@@ -75,7 +75,7 @@ export default async function Home() {
 
   return (
     <main className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
-      <div className="shrink-0 border-b border-violet-500/15 bg-gradient-to-b from-violet-950/40 via-indigo-950/20 to-transparent px-4 py-10">
+      <div className="shrink-0 border-b border-violet-500/15 bg-linear-to-b from-violet-950/40 via-indigo-950/20 to-transparent px-4 py-10">
         <div className="mx-auto max-w-6xl">
           <h1 className="text-3xl font-semibold tracking-tight text-white drop-shadow-[0_0_24px_rgba(139,92,246,0.25)]">
             Team strats
